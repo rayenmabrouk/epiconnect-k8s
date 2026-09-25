@@ -1,0 +1,19 @@
+# Secrets and credentials never enter Git
+.vault_pass
+*.vault_pass
+kubeconfig
+kubeconfig*.yaml
+*.pem
+*.key
+*.crt
+secrets/
+!kubernetes/**/secret.example.yaml
+
+# Local, machine-specific state
+.lab/
+*.retry
+__pycache__/
+.venv/
+*.iso
+*.vhdx
+*.img

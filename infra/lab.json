@@ -1,0 +1,21 @@
+{
+  "_comment": "Single source of truth for the lab topology. Read by infra/hyperv/*.ps1 and infra/hyperv/prepare-image.sh. The Ansible inventory (ansible/inventory/hosts.yml) must use the same names and IPs.",
+  "switchName": "k3s-lab",
+  "natName": "k3s-lab-nat",
+  "subnet": "192.168.50.0/24",
+  "gateway": "192.168.50.1",
+  "prefixLength": 24,
+  "dns": ["1.1.1.1", "8.8.8.8"],
+  "labRoot": "C:\\HyperV\\k3s-lab",
+  "diskSizeGB": 30,
+  "ubuntu": {
+    "release": "noble",
+    "baseUrl": "https://cloud-images.ubuntu.com/releases/noble/release",
+    "image": "ubuntu-24.04-server-cloudimg-amd64.img"
+  },
+  "nodes": [
+    { "name": "k3s-server",  "role": "server", "ip": "192.168.50.10", "mac": "00155D320A0A", "cpus": 2, "memoryMB": 4096 },
+    { "name": "k3s-worker1", "role": "agent",  "ip": "192.168.50.11", "mac": "00155D320A0B", "cpus": 2, "memoryMB": 3072 },
+    { "name": "k3s-worker2", "role": "agent",  "ip": "192.168.50.12", "mac": "00155D320A0C", "cpus": 2, "memoryMB": 3072 }
+  ]
+}

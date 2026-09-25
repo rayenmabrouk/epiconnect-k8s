@@ -1,0 +1,6 @@
+# Shell, YAML, templates: always LF (they run inside Linux: WSL and the VMs)
+* text=auto eol=lf
+# PowerShell runs on Windows (Windows PowerShell 5.1)
+*.ps1 text eol=crlf
+*.png binary
+*.jpg binary
