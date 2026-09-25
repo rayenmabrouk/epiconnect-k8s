@@ -18,6 +18,16 @@ bootstrap: ## Install pinned tooling in WSL (Ansible, kubectl, helm, image tools
 	scripts/bootstrap-wsl.sh
 
 ##@ Lab VMs (Hyper-V)
+host-init: ## One-time Windows prep, elevated (UAC prompt): Hyper-V group, switch, NAT, WSL mirrored mode
+	@# Copied to a local Windows folder first: elevated shells cannot always read \\wsl.localhost paths
+	@local_app="$$(powershell.exe -NoProfile -Command '$$env:LOCALAPPDATA' | tr -d '\r')"; \
+	stage="$$(wslpath -u "$$local_app")/epiconnect-k8s"; \
+	rm -rf "$$stage/infra"; mkdir -p "$$stage"; cp -r infra "$$stage/"; \
+	script="$$(wslpath -w "$$stage/infra/hyperv/Initialize-LabHost.ps1")"; \
+	echo "Opening an elevated PowerShell for: $$script (accept the UAC prompt)"; \
+	cmd="Start-Process powershell -Verb RunAs -ArgumentList @('-NoExit','-NoProfile','-ExecutionPolicy','Bypass','-File',('\"{0}\"' -f '$$script'))"; \
+	powershell.exe -NoProfile -EncodedCommand "$$(printf '%s' "$$cmd" | iconv -t UTF-16LE | base64 -w0)"
+
 image: ## Download + verify the Ubuntu cloud image; build base VHDX and cloud-init seed ISOs
 	$(HYPERV)/prepare-image.sh
 
@@ -60,4 +70,4 @@ forget-hosts: ## Remove lab host keys from known_hosts (after recreating VMs)
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"} /^##@/ {printf "\n%s\n", substr($$0, 5)} /^[a-z-]+:.*##/ {printf "  %-14s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-.PHONY: bootstrap image vms status start stop poweroff checkpoint restore destroy-vms ping forget-hosts help
+.PHONY: bootstrap host-init image vms status start stop poweroff checkpoint restore destroy-vms ping forget-hosts help

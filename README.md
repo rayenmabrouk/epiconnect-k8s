@@ -52,11 +52,11 @@ Prerequisites: Windows 11 Pro with Hyper-V enabled, ~12 GB free RAM, ~100 GB dis
    cd ~/epiconnect-k8s && git submodule update --init
    ./scripts/bootstrap-wsl.sh && source ~/.bashrc
    ```
-3. **Prepare the Windows host** (PowerShell *as Administrator*; the path is the repo inside WSL):
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File \\wsl.localhost\Ubuntu-24.04\home\<you>\epiconnect-k8s\infra\hyperv\Initialize-LabHost.ps1
+3. **Prepare the Windows host** (Ubuntu; opens an elevated PowerShell, accept the UAC prompt):
+   ```bash
+   make host-init
    ```
-   Then **sign out of Windows and back in** (group membership, WSL networking mode).
+   Then **sign out of Windows and back in** (Hyper-V group membership and WSL mirrored networking take effect).
 4. **Create the VMs** (Ubuntu):
    ```bash
    make image        # verify + convert the Ubuntu cloud image, build seed ISOs
