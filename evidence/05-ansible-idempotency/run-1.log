@@ -1,0 +1,343 @@
+
+PLAY [Base configuration of every node (packages, accounts, SSH, firewall)] ****
+
+TASK [Gathering Facts] *********************************************************
+ok: [k3s-server]
+ok: [k3s-worker1]
+ok: [k3s-worker2]
+
+TASK [common : Only Ubuntu 24.04 is supported] *********************************
+ok: [k3s-server]
+ok: [k3s-worker1]
+ok: [k3s-worker2]
+
+TASK [common : Set the hostname] ***********************************************
+ok: [k3s-worker1]
+ok: [k3s-server]
+ok: [k3s-worker2]
+
+TASK [common : Every node can resolve every other node by name] ****************
+changed: [k3s-server]
+changed: [k3s-worker2]
+changed: [k3s-worker1]
+
+TASK [common : Install base packages] ******************************************
+ok: [k3s-server]
+ok: [k3s-worker1]
+ok: [k3s-worker2]
+
+TASK [common : Set the timezone (logs from every node line up)] ****************
+changed: [k3s-server]
+changed: [k3s-worker1]
+changed: [k3s-worker2]
+
+TASK [common : Swap must be off (the kubelet expects it)] **********************
+ok: [k3s-server]
+ok: [k3s-worker1]
+ok: [k3s-worker2]
+
+TASK [common : Load kernel modules at every boot] ******************************
+changed: [k3s-worker2]
+changed: [k3s-server]
+changed: [k3s-worker1]
+
+TASK [common : Load kernel modules now] ****************************************
+changed: [k3s-worker2] => (item=overlay)
+changed: [k3s-worker1] => (item=overlay)
+changed: [k3s-server] => (item=overlay)
+changed: [k3s-worker2] => (item=br_netfilter)
+changed: [k3s-worker1] => (item=br_netfilter)
+changed: [k3s-server] => (item=br_netfilter)
+
+TASK [common : Kernel parameters for Kubernetes networking] ********************
+changed: [k3s-server] => (item={'key': 'net.ipv4.ip_forward', 'value': 1})
+changed: [k3s-worker1] => (item={'key': 'net.ipv4.ip_forward', 'value': 1})
+changed: [k3s-server] => (item={'key': 'net.bridge.bridge-nf-call-iptables', 'value': 1})
+changed: [k3s-server] => (item={'key': 'net.bridge.bridge-nf-call-ip6tables', 'value': 1})
+changed: [k3s-worker2] => (item={'key': 'net.ipv4.ip_forward', 'value': 1})
+changed: [k3s-worker2] => (item={'key': 'net.bridge.bridge-nf-call-iptables', 'value': 1})
+changed: [k3s-worker1] => (item={'key': 'net.bridge.bridge-nf-call-iptables', 'value': 1})
+changed: [k3s-worker1] => (item={'key': 'net.bridge.bridge-nf-call-ip6tables', 'value': 1})
+changed: [k3s-worker2] => (item={'key': 'net.bridge.bridge-nf-call-ip6tables', 'value': 1})
+
+TASK [users : Group allowed to log in over SSH] ********************************
+changed: [k3s-worker2]
+changed: [k3s-worker1]
+changed: [k3s-server]
+
+TASK [users : Automation account is in the SSH group] **************************
+changed: [k3s-worker2]
+changed: [k3s-server]
+changed: [k3s-worker1]
+
+TASK [users : Automation account accepts only the lab key] *********************
+ok: [k3s-worker2]
+ok: [k3s-server]
+ok: [k3s-worker1]
+
+TASK [users : Automation account sudo rule (managed here, not by cloud-init)] ***
+changed: [k3s-server]
+changed: [k3s-worker2]
+changed: [k3s-worker1]
+
+TASK [users : Remove cloud-init's sudo rule (replaced by the file above)] ******
+changed: [k3s-server]
+changed: [k3s-worker1]
+changed: [k3s-worker2]
+
+TASK [users : Human admin account] *********************************************
+changed: [k3s-worker2]
+changed: [k3s-worker1]
+changed: [k3s-server]
+
+TASK [users : Human admin SSH key] *********************************************
+changed: [k3s-server]
+changed: [k3s-worker1]
+changed: [k3s-worker2]
+
+TASK [users : Root cannot log in with a password] ******************************
+changed: [k3s-server]
+changed: [k3s-worker2]
+changed: [k3s-worker1]
+
+TASK [users : No stock "ubuntu" account] ***************************************
+ok: [k3s-worker1]
+ok: [k3s-server]
+ok: [k3s-worker2]
+
+TASK [ssh_hardening : The automation account must be allowed in before AllowGroups is applied] ***
+ok: [k3s-server]
+ok: [k3s-worker2]
+ok: [k3s-worker1]
+
+TASK [ssh_hardening : SSH daemon hardening drop-in] ****************************
+changed: [k3s-worker2]
+changed: [k3s-server]
+changed: [k3s-worker1]
+
+TASK [firewall : Install ufw] **************************************************
+ok: [k3s-worker2]
+ok: [k3s-server]
+ok: [k3s-worker1]
+
+TASK [firewall : Rules for this node's role] ***********************************
+ok: [k3s-server]
+ok: [k3s-worker1]
+ok: [k3s-worker2]
+
+TASK [firewall : Allow required ports from the lab network only] ***************
+changed: [k3s-worker1] => (item=22/tcp SSH (Ansible, admin))
+changed: [k3s-server] => (item=22/tcp SSH (Ansible, admin))
+changed: [k3s-worker2] => (item=22/tcp SSH (Ansible, admin))
+changed: [k3s-server] => (item=10250/tcp kubelet API (logs, exec, metrics))
+changed: [k3s-worker1] => (item=10250/tcp kubelet API (logs, exec, metrics))
+changed: [k3s-worker2] => (item=10250/tcp kubelet API (logs, exec, metrics))
+changed: [k3s-worker1] => (item=8472/udp flannel VXLAN (pod-to-pod across nodes))
+changed: [k3s-worker2] => (item=8472/udp flannel VXLAN (pod-to-pod across nodes))
+changed: [k3s-server] => (item=8472/udp flannel VXLAN (pod-to-pod across nodes))
+changed: [k3s-worker1] => (item=80/tcp Ingress HTTP (Traefik via ServiceLB))
+changed: [k3s-server] => (item=80/tcp Ingress HTTP (Traefik via ServiceLB))
+changed: [k3s-worker2] => (item=80/tcp Ingress HTTP (Traefik via ServiceLB))
+changed: [k3s-worker1] => (item=443/tcp Ingress HTTPS (Traefik via ServiceLB))
+changed: [k3s-server] => (item=443/tcp Ingress HTTPS (Traefik via ServiceLB))
+changed: [k3s-worker2] => (item=443/tcp Ingress HTTPS (Traefik via ServiceLB))
+changed: [k3s-server] => (item=6443/tcp Kubernetes API server)
+changed: [k3s-server] => (item=2049/tcp NFSv4 (uploaded files share))
+
+TASK [firewall : Allow traffic from pod and service networks to the node] ******
+changed: [k3s-server] => (item=10.42.0.0/16)
+changed: [k3s-worker1] => (item=10.42.0.0/16)
+changed: [k3s-worker2] => (item=10.42.0.0/16)
+changed: [k3s-server] => (item=10.43.0.0/16)
+changed: [k3s-worker1] => (item=10.43.0.0/16)
+changed: [k3s-worker2] => (item=10.43.0.0/16)
+
+TASK [firewall : Allow forwarded traffic from/to the pod network] **************
+changed: [k3s-server] => (item={'from': '10.42.0.0/16', 'to': 'any'})
+changed: [k3s-worker1] => (item={'from': '10.42.0.0/16', 'to': 'any'})
+changed: [k3s-worker2] => (item={'from': '10.42.0.0/16', 'to': 'any'})
+changed: [k3s-server] => (item={'from': 'any', 'to': '10.42.0.0/16'})
+changed: [k3s-worker1] => (item={'from': 'any', 'to': '10.42.0.0/16'})
+changed: [k3s-worker2] => (item={'from': 'any', 'to': '10.42.0.0/16'})
+
+TASK [firewall : Default policies (incoming denied, outgoing allowed)] *********
+ok: [k3s-server] => (item=incoming=deny)
+ok: [k3s-worker2] => (item=incoming=deny)
+ok: [k3s-worker1] => (item=incoming=deny)
+ok: [k3s-worker1] => (item=outgoing=allow)
+ok: [k3s-worker2] => (item=outgoing=allow)
+ok: [k3s-server] => (item=outgoing=allow)
+
+TASK [firewall : Enable the firewall] ******************************************
+changed: [k3s-server]
+changed: [k3s-worker2]
+changed: [k3s-worker1]
+
+RUNNING HANDLER [ssh_hardening : Test full sshd configuration] *****************
+ok: [k3s-worker1]
+ok: [k3s-server]
+ok: [k3s-worker2]
+
+RUNNING HANDLER [ssh_hardening : Reload sshd (existing sessions stay open)] ****
+changed: [k3s-server]
+changed: [k3s-worker2]
+changed: [k3s-worker1]
+
+PLAY [NFS client on every node (the kubelet mounts NFS volumes)] ***************
+
+TASK [Gathering Facts] *********************************************************
+ok: [k3s-server]
+ok: [k3s-worker2]
+ok: [k3s-worker1]
+
+TASK [nfs_client : Install the NFS client] *************************************
+changed: [k3s-server]
+changed: [k3s-worker1]
+changed: [k3s-worker2]
+
+PLAY [NFS share for EPIConnect uploads] ****************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [k3s-server]
+
+TASK [nfs_server : Install the NFS server] *************************************
+changed: [k3s-server]
+
+TASK [nfs_server : Export directory owned by the application user] *************
+changed: [k3s-server]
+
+TASK [nfs_server : Drop-in directory for exports (not created by the package)] ***
+changed: [k3s-server]
+
+TASK [nfs_server : Export the directory to the lab network only] ***************
+changed: [k3s-server]
+
+TASK [nfs_server : NFS server running and enabled at boot] *********************
+ok: [k3s-server]
+
+RUNNING HANDLER [nfs_server : Re-export NFS shares] ****************************
+changed: [k3s-server]
+
+PLAY [K3s control plane] *******************************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [k3s-server]
+
+TASK [k3s_install : Download the k3s binary (pinned, checksum-verified)] *******
+changed: [k3s-server]
+
+TASK [k3s_install : Symlinks - kubectl, crictl and ctr are the same binary under another name] ***
+changed: [k3s-server] => (item=kubectl)
+changed: [k3s-server] => (item=crictl)
+changed: [k3s-server] => (item=ctr)
+
+TASK [k3s_install : Configuration directory /etc/rancher/k3s] ******************
+changed: [k3s-server]
+
+TASK [k3s_install : Systemd unit for k3s] **************************************
+changed: [k3s-server]
+
+TASK [k3s_server : Server configuration (/etc/rancher/k3s/config.yaml)] ********
+changed: [k3s-server]
+
+TASK [k3s_server : Apply configuration changes] ********************************
+
+RUNNING HANDLER [k3s_install : Restart k3s] ************************************
+changed: [k3s-server]
+
+TASK [k3s_server : Server service running and enabled at boot] *****************
+changed: [k3s-server]
+
+TASK [k3s_server : Wait for the API server to be ready] ************************
+ok: [k3s-server]
+
+TASK [k3s_server : Wait for this node to be Ready] *****************************
+ok: [k3s-server]
+
+PLAY [K3s workers join the cluster] ********************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [k3s-worker1]
+
+TASK [k3s_install : Download the k3s binary (pinned, checksum-verified)] *******
+changed: [k3s-worker1]
+
+TASK [k3s_install : Symlinks - kubectl, crictl and ctr are the same binary under another name] ***
+changed: [k3s-worker1] => (item=kubectl)
+changed: [k3s-worker1] => (item=crictl)
+changed: [k3s-worker1] => (item=ctr)
+
+TASK [k3s_install : Configuration directory /etc/rancher/k3s] ******************
+changed: [k3s-worker1]
+
+TASK [k3s_install : Systemd unit for k3s-agent] ********************************
+changed: [k3s-worker1]
+
+TASK [k3s_agent : Agent configuration (/etc/rancher/k3s/config.yaml)] **********
+changed: [k3s-worker1]
+
+TASK [k3s_agent : Apply configuration changes] *********************************
+
+RUNNING HANDLER [k3s_install : Restart k3s] ************************************
+changed: [k3s-worker1]
+
+TASK [k3s_agent : Agent service running and enabled at boot] *******************
+changed: [k3s-worker1]
+
+TASK [k3s_agent : Wait for this node to join and be Ready] *********************
+FAILED - RETRYING: [k3s-worker1 -> k3s-server]: k3s_agent : Wait for this node to join and be Ready (9 retries left).
+ok: [k3s-worker1 -> k3s-server(192.168.50.10)]
+
+PLAY [K3s workers join the cluster] ********************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [k3s-worker2]
+
+TASK [k3s_install : Download the k3s binary (pinned, checksum-verified)] *******
+changed: [k3s-worker2]
+
+TASK [k3s_install : Symlinks - kubectl, crictl and ctr are the same binary under another name] ***
+changed: [k3s-worker2] => (item=kubectl)
+changed: [k3s-worker2] => (item=crictl)
+changed: [k3s-worker2] => (item=ctr)
+
+TASK [k3s_install : Configuration directory /etc/rancher/k3s] ******************
+changed: [k3s-worker2]
+
+TASK [k3s_install : Systemd unit for k3s-agent] ********************************
+changed: [k3s-worker2]
+
+TASK [k3s_agent : Agent configuration (/etc/rancher/k3s/config.yaml)] **********
+changed: [k3s-worker2]
+
+TASK [k3s_agent : Apply configuration changes] *********************************
+
+RUNNING HANDLER [k3s_install : Restart k3s] ************************************
+changed: [k3s-worker2]
+
+TASK [k3s_agent : Agent service running and enabled at boot] *******************
+changed: [k3s-worker2]
+
+TASK [k3s_agent : Wait for this node to join and be Ready] *********************
+FAILED - RETRYING: [k3s-worker2 -> k3s-server]: k3s_agent : Wait for this node to join and be Ready (9 retries left).
+ok: [k3s-worker2 -> k3s-server(192.168.50.10)]
+
+PLAY [Kubeconfig for the control machine (WSL)] ********************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [k3s-server]
+
+TASK [Read the admin kubeconfig k3s generated] *********************************
+ok: [k3s-server]
+
+TASK [Local ~/.kube directory] *************************************************
+ok: [k3s-server -> localhost]
+
+TASK [Write it locally, pointing at the server's lab IP] ***********************
+changed: [k3s-server -> localhost]
+
+PLAY RECAP *********************************************************************
+k3s-server                 : ok=53   changed=32   unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
+k3s-worker1                : ok=41   changed=26   unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
+k3s-worker2                : ok=41   changed=26   unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
+
