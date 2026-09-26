@@ -18,22 +18,17 @@ for s in epiconnect-secrets epiconnect-tls; do
     || { echo "Secret ${s} missing: run 'make secrets' and 'make tls' first" >&2; exit 1; }
 done
 
-# First Helm deployment over a raw-manifest deployment: adopt, don't recreate.
-# Helm 4 applies objects with server-side apply, which records an owner
-# ("field manager") per field. The adopted objects' fields are owned by
-# kubectl; --force-conflicts makes the Helm release their owner. Only on this
-# first run: afterwards a conflict means someone changed the live objects by
-# hand, and that should stop the upgrade rather than be overwritten silently.
-first_run_args=()
+# First Helm deployment over a raw-manifest deployment: adopt, don't recreate
+# (labels/annotations Helm requires + kubectl's field ownership removed, see
+# scripts/adopt-into-helm.sh).
 if ! helm -n "${ns}" status "${release}" >/dev/null 2>&1; then
   scripts/adopt-into-helm.sh
-  first_run_args=(--force-conflicts)
 fi
 
 # --wait / --wait-for-jobs: return only when the Deployment and StatefulSet
 # are ready and the migration Job has completed (or fail after the timeout)
 helm upgrade --install "${release}" helm/epiconnect \
-  --namespace "${ns}" --wait --wait-for-jobs --timeout 10m "${first_run_args[@]}" "$@"
+  --namespace "${ns}" --wait --wait-for-jobs --timeout 10m "$@"
 
 kubectl -n "${ns}" get pods -o wide
 helm -n "${ns}" history "${release}" --max 5

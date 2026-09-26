@@ -128,7 +128,7 @@ Format: **Decision** / Why / Rejected alternatives / Failure mode it addresses /
 
 ## D19. Own Helm chart, written to adopt the running deployment
 
-- **Decision:** `helm/epiconnect` renders the same names, selectors and StatefulSet claim templates as `kubernetes/`; `scripts/adopt-into-helm.sh` hands the live objects to the release; the first deploy uses `--force-conflicts` once (Helm 4 server-side apply).
+- **Decision:** `helm/epiconnect` renders the same names, selectors and StatefulSet claim templates as `kubernetes/`; `scripts/adopt-into-helm.sh` hands the live objects to the release: Helm's ownership label and annotations, and kubectl's field-ownership records removed (Helm 4 applies with server-side apply; see the Helm study notes for the conflict this caused on the first real upgrade).
 - **Rejected:** delete and reinstall (downtime; the database volume would have to be re-bound by hand); a community PostgreSQL chart (hides the StatefulSet this project exists to show, and its images and defaults change outside my control).
 - **Failure mode addressed:** "switching tools" turning into an outage or a data loss.
 - **Accepted:** one release per namespace (fixed object names such as `postgres`).
