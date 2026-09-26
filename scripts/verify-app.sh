@@ -141,6 +141,9 @@ c_shared_uploads() {
 # db-client label the NetworkPolicy must drop it; with the label it must work.
 # The pod is created, waited for, and its log read afterwards: attaching to a
 # pod this short-lived ("kubectl run -i") can miss its output entirely.
+# The full service name is used because busybox's resolver does not apply the
+# pod's DNS search domains reliably: the short name "postgres" fails to resolve
+# in busybox even though it resolves in the application pods.
 netpol_probe() {
   local label="$1" pod="netpol-probe-${nonce}-$1"
   # shellcheck disable=SC2016  # the JSON is literal; the shell inside the pod expands nothing here
@@ -151,7 +154,7 @@ netpol_probe() {
         "securityContext": {"runAsNonRoot": true, "runAsUser": 65534, "seccompProfile": {"type": "RuntimeDefault"}},
         "containers": [{
           "name": "probe", "image": "busybox:1.37",
-          "command": ["sh", "-c", "if nslookup postgres >/dev/null 2>&1; then echo dns=ok; else echo dns=FAILED; fi; nc -w 3 postgres 5432 </dev/null && echo REACHABLE || echo BLOCKED"],
+          "command": ["sh", "-c", "host=postgres.epiconnect.svc.cluster.local; if nslookup $host >/dev/null 2>&1; then echo dns=ok; else echo dns=FAILED; fi; if err=$(nc -w 3 $host 5432 </dev/null 2>&1); then echo REACHABLE; else echo BLOCKED $err; fi"],
           "securityContext": {"allowPrivilegeEscalation": false, "capabilities": {"drop": ["ALL"]}}
         }]}}' >/dev/null
   # The first run pulls busybox, so allow time for the image download
@@ -167,7 +170,8 @@ c_network_policy() {
   with="$(netpol_probe true)"
   echo "pod WITHOUT db-client label -> postgres:5432: ${without}"
   echo "pod WITH    db-client label -> postgres:5432: ${with}"
-  [[ "${without}" == *BLOCKED* && "${with}" == *REACHABLE* ]]
+  # DNS must work in both cases, otherwise "BLOCKED" would prove nothing
+  [[ "${without}" == *dns=ok*BLOCKED* && "${with}" == *dns=ok*REACHABLE* ]]
 }
 
 c_security() {

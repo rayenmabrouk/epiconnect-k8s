@@ -128,3 +128,10 @@ PostgreSQL keeps the password it was initialised with (inside its volume). A new
 Secret no longer matches. Lab fix (destroys the data): delete the StatefulSet **and** the
 claim `data-postgres-0`, then `make deploy-manifests`. Otherwise, set the old password
 back in the Secret.
+
+### A debug pod cannot resolve a Service name that the application resolves fine
+busybox-based images do not apply the pod's DNS search domains reliably, so short
+names like `postgres` fail there while they work in the application (glibc). Use the
+full name: `postgres.epiconnect.svc.cluster.local`. When testing a NetworkPolicy,
+always run a positive control too (a pod that *should* connect): "blocked" only means
+something if the allowed case succeeds under the same conditions.
