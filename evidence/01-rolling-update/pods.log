@@ -1,0 +1,12 @@
+23:40:35.445 0b3cd06: 3 pods, 3 ready   
+23:40:45.598 b38f31a: 1 pods, 0 ready   0b3cd06: 3 pods, 3 ready   
+23:40:52.699 b38f31a: 2 pods, 1 ready   0b3cd06: 3 pods, 3 ready   
+23:41:01.062 b38f31a: 2 pods, 2 ready   0b3cd06: 3 pods, 3 ready   
+23:41:02.465 b38f31a: 3 pods, 2 ready   0b3cd06: 3 pods, 3 ready   
+23:41:07.038 b38f31a: 3 pods, 3 ready   0b3cd06: 3 pods, 3 ready   
+23:41:08.881 b38f31a: 3 pods, 3 ready   0b3cd06: 3 pods, 2 ready   
+23:41:17.943 b38f31a: 3 pods, 3 ready   0b3cd06: 3 pods, 1 ready   
+23:41:19.284 b38f31a: 3 pods, 3 ready   0b3cd06: 2 pods, 1 ready   
+23:41:22.075 b38f31a: 3 pods, 3 ready   0b3cd06: 2 pods, 0 ready   
+23:41:26.317 b38f31a: 3 pods, 3 ready   0b3cd06: 1 pods, 0 ready   
+23:41:33.423 b38f31a: 3 pods, 3 ready   

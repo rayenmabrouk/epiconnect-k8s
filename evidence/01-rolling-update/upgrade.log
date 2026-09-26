@@ -1,0 +1,38 @@
+namespace/epiconnect unchanged
+Release "epiconnect" has been upgraded. Happy Helming!
+NAME: epiconnect
+LAST DEPLOYED: Sat Sep 26 23:40:43 2026
+NAMESPACE: epiconnect
+STATUS: deployed
+REVISION: 5
+DESCRIPTION: Upgrade complete
+TEST SUITE: None
+NOTES:
+EPIConnect ghcr.io/rayenmabrouk/epiconnect:b38f31a - release "epiconnect", revision 5
+
+  kubectl -n epiconnect get pods,jobs -o wide
+  kubectl -n epiconnect rollout status deployment/epiconnect
+
+Open https://epiconnect.lab  (end-to-end checks: make verify)
+
+History and rollback:
+  helm -n epiconnect history epiconnect
+  helm -n epiconnect rollback epiconnect <revision>
+NAME                                 READY   STATUS        RESTARTS       AGE     IP           NODE          NOMINATED NODE   READINESS GATES
+epiconnect-758bb8989b-cznth          1/1     Terminating   0              85s     10.42.2.17   k3s-worker2   <none>           <none>
+epiconnect-758bb8989b-w9tb5          1/1     Terminating   0              78s     10.42.2.18   k3s-worker2   <none>           <none>
+epiconnect-758bb8989b-x6fhw          1/1     Terminating   0              73s     10.42.1.24   k3s-worker1   <none>           <none>
+epiconnect-86b58dc64d-6vxss          1/1     Running       0              7s      10.42.2.20   k3s-worker2   <none>           <none>
+epiconnect-86b58dc64d-hj64g          1/1     Running       0              21s     10.42.1.26   k3s-worker1   <none>           <none>
+epiconnect-86b58dc64d-vdsh2          1/1     Running       0              14s     10.42.1.27   k3s-worker1   <none>           <none>
+epiconnect-bootstrap-admin-2-894n4   0/1     Completed     0              9m37s   10.42.2.13   k3s-worker2   <none>           <none>
+epiconnect-bootstrap-admin-5-sl2l6   0/1     Completed     0              21s     10.42.2.19   k3s-worker2   <none>           <none>
+epiconnect-migrate-2-jrqzh           0/1     Completed     0              9m37s   10.42.1.21   k3s-worker1   <none>           <none>
+epiconnect-migrate-5-npt5k           0/1     Completed     0              21s     10.42.1.25   k3s-worker1   <none>           <none>
+postgres-0                           1/1     Running       1 (3h1m ago)   11h     10.42.0.14   k3s-server    <none>           <none>
+REVISION	UPDATED                 	STATUS    	CHART           	APP VERSION	DESCRIPTION                                                                                                                                                                                                  
+1       	Sat Sep 26 22:56:14 2026	superseded	epiconnect-0.1.0	0b3cd06    	Install complete                                                                                                                                                                                             
+2       	Sat Sep 26 23:31:27 2026	failed    	epiconnect-0.1.0	0b3cd06    	Upgrade "epiconnect" failed: conflict occurred while applying object epiconnect/epiconnect apps/v1, Kind=Deployment: Apply failed with 2 conflicts: conflicts with "kubectl-client-side-apply" using apps/...
+3       	Sat Sep 26 23:36:24 2026	superseded	epiconnect-0.1.0	0b3cd06    	Upgrade complete                                                                                                                                                                                             
+4       	Sat Sep 26 23:39:38 2026	superseded	epiconnect-0.1.0	0b3cd06    	Upgrade complete                                                                                                                                                                                             
+5       	Sat Sep 26 23:40:43 2026	deployed  	epiconnect-0.1.0	0b3cd06    	Upgrade complete                                                                                                                                                                                             
