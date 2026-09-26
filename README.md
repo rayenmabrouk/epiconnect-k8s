@@ -16,9 +16,9 @@ Linux hosts, configuration management, container orchestration, cluster networki
 |---|---|---|
 | 0 | WSL2 control machine (pinned Ansible, kubectl, helm) | done |
 | 1 | Hyper-V network + 3 Ubuntu VMs (cloud image, cloud-init, static IPs) | done |
-| 2 | Ansible roles: users, SSH hardening, UFW, NFS, k3s server/agents | in progress |
-| 3 | Raw Kubernetes manifests | |
-| 4 | Application verification | |
+| 2 | Ansible roles: users, SSH hardening, UFW, NFS, k3s server/agents | done ([evidence](evidence/05-ansible-idempotency/summary.md)) |
+| 3 | Raw Kubernetes manifests | in progress |
+| 4 | Application verification | in progress |
 | 5 | Helm chart | |
 | 6 | GitHub Actions CI + GHCR | |
 | 7 | Failure demonstrations with evidence | |
@@ -74,6 +74,21 @@ make nodes          # 3 nodes Ready
 demos/05-ansible-idempotency.sh --fresh   # evidence: rebuild from clean VMs, 2nd run changed=0
 ```
 
+## Deploy EPIConnect with raw manifests (Milestones 3-4)
+
+The image is built by GitHub Actions (`.github/workflows/image.yml`) from the pinned `app/`
+submodule and published to `ghcr.io/rayenmabrouk/epiconnect:<EPIConnect commit>`.
+
+```bash
+make host-init        # once more: adds "192.168.50.10 epiconnect.lab" to the Windows hosts file
+make secrets          # application Secret (random, created once)
+make tls              # lab CA + certificate for epiconnect.lab
+make deploy-manifests # everything in kubernetes/, in dependency order
+make verify           # 12 end-to-end checks -> evidence/04-app-verification/report.md
+```
+
+Then open https://epiconnect.lab (admin password in `~/.config/epiconnect-k8s/admin-password`).
+
 `make help` lists every operation.
 
 ## Documentation
@@ -81,4 +96,5 @@ demos/05-ansible-idempotency.sh --fresh   # evidence: rebuild from clean VMs, 2n
 - [Decision log](docs/DECISIONS.md): every component, why it exists, what failure it addresses
 - [Study notes: lab infrastructure](docs/learning/01-lab-infrastructure.md)
 - [Study notes: Ansible and k3s](docs/learning/02-ansible-and-k3s.md)
+- [Study notes: Kubernetes manifests and verification](docs/learning/03-kubernetes-manifests.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)

@@ -98,3 +98,33 @@ after `make bootstrap`). The file is written by the last play of `make provision
 ### Pods cannot resolve DNS or reach pods on another node
 `kubectl -n kube-system logs deploy/coredns`; on the nodes, `sudo journalctl -k | grep 'UFW BLOCK'`
 shows dropped packets. The firewall role must allow 10.42.0.0/16 and 10.43.0.0/16 (input and route).
+
+## Application on Kubernetes
+
+Start every investigation with:
+```bash
+kubectl -n epiconnect get pods -o wide
+kubectl -n epiconnect describe pod <pod>          # Events at the bottom
+kubectl get events -n epiconnect --sort-by=.lastTimestamp | tail -20
+```
+
+| Symptom | Likely cause | Look at / fix |
+|---|---|---|
+| `ImagePullBackOff` | image tag not built yet, or the GHCR package is private | GitHub → Actions → Image run; package settings → visibility Public |
+| `CreateContainerConfigError` | Secret or key missing | `make secrets`; `kubectl -n epiconnect get secret` |
+| web pods stay in `Init:0/1` | migrations not applied | `kubectl -n epiconnect logs job/epiconnect-migrate`; logs of the `wait-for-migrations` container |
+| Job `epiconnect-migrate` failed | DB unreachable or migration error | Job logs; `kubectl -n epiconnect logs postgres-0` |
+| `Pending` pod | no node matches `nodeSelector`/resources, or PVC not bound | `describe pod` → FailedScheduling message; `make nodes` shows the pool labels |
+| `ContainerCreating` for minutes | NFS mount failing | `describe pod` → MountVolume errors; `ssh k3s-worker1 'showmount -e 192.168.50.10'` |
+| `CrashLoopBackOff` | app exits on start (config) | `kubectl -n epiconnect logs <pod> -c web --previous` |
+| Running but `0/1` READY | readiness `/readyz/` failing (DB down, or NetworkPolicy) | Events `Readiness probe failed`; `kubectl -n epiconnect get pod postgres-0` |
+| Browser: 404 page not found (Traefik) | Host header does not match the Ingress | the Windows hosts entry: `make host-init`; `ping epiconnect.lab` from PowerShell |
+| Browser: certificate warning | lab CA not trusted | expected, or `make trust-ca` |
+| Django `Bad Request (400)` | hostname not in `ALLOWED_HOSTS` | `kubernetes/configmap.yaml`, then `kubectl -n epiconnect rollout restart deploy/epiconnect` |
+| `CSRF verification failed` on login | origin not in `CSRF_TRUSTED_ORIGINS`, or HTTP instead of HTTPS | use `https://epiconnect.lab` |
+
+### PostgreSQL password mismatch after re-creating the Secret
+PostgreSQL keeps the password it was initialised with (inside its volume). A new random
+Secret no longer matches. Lab fix (destroys the data): delete the StatefulSet **and** the
+claim `data-postgres-0`, then `make deploy-manifests`. Otherwise, set the old password
+back in the Secret.

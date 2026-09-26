@@ -1,0 +1,167 @@
+---
+# The web tier: 3 identical, stateless replicas behind one Service.
+# (Stateless: sessions and rate-limit counters are in PostgreSQL, uploads on
+# the shared NFS volume, so any replica can serve any request.)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: epiconnect
+  namespace: epiconnect
+  labels:
+    app.kubernetes.io/name: epiconnect
+    app.kubernetes.io/component: web
+    app.kubernetes.io/part-of: epiconnect
+spec:
+  replicas: 3
+  revisionHistoryLimit: 5               # old ReplicaSets kept for "kubectl rollout undo"
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: epiconnect
+      app.kubernetes.io/component: web
+  # Rolling update: start 1 new pod, wait until it is READY, then stop 1 old
+  # pod, and repeat. maxUnavailable 0 = capacity never drops below 3 ready
+  # pods, and a new version that never becomes ready stops the rollout while
+  # the old pods keep serving.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: epiconnect
+        app.kubernetes.io/component: web
+        app.kubernetes.io/part-of: epiconnect
+        epiconnect.io/db-client: "true"      # allowed to reach PostgreSQL (NetworkPolicy)
+    spec:
+      serviceAccountName: epiconnect
+      automountServiceAccountToken: false
+      nodeSelector:
+        epiconnect.io/pool: app              # the two workers (Ansible node label)
+      # Spread replicas across nodes (2 + 1 on two workers). "ScheduleAnyway"
+      # = a preference, not a rule: when a worker is down, the replacement pod
+      # may still land on the surviving worker instead of staying Pending.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: epiconnect
+              app.kubernetes.io/component: web
+      # When a node stops responding, Kubernetes waits this long before evicting
+      # its pods and recreating them elsewhere (default 300 s; 30 s here so the
+      # worker-failure demo is visible without a 5-minute wait).
+      tolerations:
+        - key: node.kubernetes.io/unreachable
+          operator: Exists
+          effect: NoExecute
+          tolerationSeconds: 30
+        - key: node.kubernetes.io/not-ready
+          operator: Exists
+          effect: NoExecute
+          tolerationSeconds: 30
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001                     # the image's "app" user
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      # Gate: a web pod starts only once the database schema is current (the
+      # migration Job has run). Without it, a new pod could become Ready and
+      # serve requests against tables that do not exist yet.
+      initContainers:
+        - name: wait-for-migrations
+          image: ghcr.io/rayenmabrouk/epiconnect:0b3cd06
+          command:
+            - sh
+            - -c
+            - until python manage.py migrate --check >/dev/null 2>&1; do echo "waiting for database migrations"; sleep 5; done
+          envFrom:
+            - configMapRef:
+                name: epiconnect-config
+          env:
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef: {name: epiconnect-secrets, key: django-secret-key}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: epiconnect-secrets, key: db-password}
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      containers:
+        - name: web
+          image: ghcr.io/rayenmabrouk/epiconnect:0b3cd06
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: epiconnect-config
+          env:
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef: {name: epiconnect-secrets, key: django-secret-key}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: epiconnect-secrets, key: db-password}
+          # startup:   the process has booted (liveness waits for this)
+          # liveness:  /healthz/ answers without touching the database, so a
+          #            database outage does NOT restart every web pod
+          # readiness: /readyz/ also runs SELECT 1; if the database is
+          #            unreachable the pod leaves the Service's endpoints
+          startupProbe:
+            httpGet: {path: /healthz/, port: http}
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: {path: /healthz/, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: {path: /readyz/, port: http}
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          # Before SIGTERM, wait until the endpoint removal has reached the
+          # Ingress controller, so no request is sent to a stopping pod.
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 5
+          resources:
+            requests:                      # what the scheduler reserves on a node
+              cpu: 100m
+              memory: 256Mi
+            limits:                        # hard ceiling (memory: OOM-kill above it)
+              cpu: "1"
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: media
+              mountPath: /app/media
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: media
+          persistentVolumeClaim:
+            claimName: epiconnect-media

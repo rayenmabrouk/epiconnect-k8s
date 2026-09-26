@@ -1,0 +1,64 @@
+---
+# Database migrations run ONCE per release, as a Job, never inside every web
+# container: 3 replicas starting at the same time must not race to alter the
+# same tables. (Same design as the AWS version: a one-off ECS task.)
+#
+# The image entrypoint's "migrate" role applies migrations and creates the
+# cache table used for rate limiting. Jobs are immutable: to run it again (new
+# image), scripts/deploy-manifests.sh deletes the old Job first.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: epiconnect-migrate
+  namespace: epiconnect
+  labels:
+    app.kubernetes.io/name: epiconnect
+    app.kubernetes.io/component: migrate
+spec:
+  backoffLimit: 6                   # retried, e.g. while PostgreSQL is still starting
+  activeDeadlineSeconds: 600
+  ttlSecondsAfterFinished: 86400    # keep the finished Job (and its logs) for a day
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: epiconnect
+        app.kubernetes.io/component: migrate
+        epiconnect.io/db-client: "true"      # allowed to reach PostgreSQL (NetworkPolicy)
+    spec:
+      restartPolicy: Never
+      serviceAccountName: epiconnect
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          image: ghcr.io/rayenmabrouk/epiconnect:0b3cd06
+          args: [migrate]
+          envFrom:
+            - configMapRef:
+                name: epiconnect-config
+          env:
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef: {name: epiconnect-secrets, key: django-secret-key}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: epiconnect-secrets, key: db-password}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

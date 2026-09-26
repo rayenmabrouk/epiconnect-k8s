@@ -86,3 +86,42 @@ Format: **Decision** / Why / Rejected alternatives / Failure mode it addresses /
 - **Why:** the 3 app replicas run on 2 workers and must see the same uploaded files; a node-local volume cannot be mounted on two nodes. Databases need local-disk semantics (fsync, locking) that NFS does not guarantee.
 - **Rejected:** Longhorn/Ceph (distributed block storage: correct in production, far too heavy for a 3-VM lab); MinIO/S3-style object storage (would require changing the application's storage configuration and adds a service to operate).
 - **Failure mode accepted and documented:** `k3s-server` is a single point of failure for both shares.
+
+## D12. Image built in CI from the pinned submodule, tagged with the application commit
+
+- **Decision:** GitHub Actions builds `app/` and pushes `ghcr.io/rayenmabrouk/epiconnect:<EPIConnect commit>`; manifests reference that exact tag.
+- **Rejected:** `:latest` (which version runs is unknowable, rollbacks are ambiguous); building on the nodes (no provenance, not reproducible); a registry inside the cluster (one more service to run).
+- **Failure mode addressed:** unknown or drifting application versions.
+
+## D13. Pod Security "restricted" enforced on the namespace
+
+- **Decision:** the namespace label makes the API server reject non-compliant pods; every workload runs non-root, read-only root filesystem, no capabilities, seccomp RuntimeDefault, no service-account token.
+- **Failure mode addressed:** a container compromise turning into node compromise through root or extra privileges.
+
+## D14. Migrations as a Job per release, plus an init-container gate
+
+- **Decision:** `epiconnect-migrate` Job before the web rollout; web pods wait in an init container until `migrate --check` passes. No Helm hooks.
+- **Rejected:** migrating in the container entrypoint (replicas race each other); Helm pre-install hooks (deadlock with `--wait` on first install, since the database is part of the same release).
+- **Failure mode addressed:** concurrent schema changes; pods serving on an outdated schema.
+
+## D15. Liveness without the database, readiness with it
+
+- **Decision:** `/healthz/` (process only) for startup and liveness; `/readyz/` (`SELECT 1`) for readiness.
+- **Failure mode addressed:** a database outage restarting every web pod (restart storm) instead of simply taking them out of rotation.
+
+## D16. NetworkPolicy default deny in both directions
+
+- **Decision:** deny all ingress and egress, then allow DNS, Traefik → web, labelled clients → PostgreSQL.
+- **Failure mode addressed:** any pod in the cluster reaching the database or making arbitrary outbound connections.
+- **Accepted:** no TLS between the app and PostgreSQL (in-cluster traffic, restricted by policy); production would add `sslmode=require` or a service mesh's mTLS.
+
+## D17. TLS with a private lab CA
+
+- **Decision:** `scripts/gen-tls.sh` creates a CA and a certificate for `epiconnect.lab`; Traefik terminates TLS; `make trust-ca` optionally trusts the CA for the current Windows user.
+- **Rejected:** plain HTTP (the app's Secure cookies and CSRF protection expect HTTPS); cert-manager with Let's Encrypt (needs a public domain and inbound reachability).
+- **Production answer:** cert-manager + ACME with a real domain.
+
+## D18. Raw manifests before Helm
+
+- **Decision:** deploy with plain YAML first; convert to a Helm chart only once it works (Milestone 5).
+- **Why:** each object is understood on its own before being templated; the duplication visible here (image tag in 4 places, repeated pod security blocks, ordering in a script) is the concrete reason for Helm.

@@ -1,0 +1,21 @@
+---
+# Headless Service (clusterIP: None): no virtual IP and no load balancing.
+# DNS "postgres" resolves directly to the database pod's IP, and the pod also
+# gets a stable name: postgres-0.postgres.epiconnect.svc.cluster.local.
+# That stable identity is what a StatefulSet needs ("serviceName" below).
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: epiconnect
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: epiconnect
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres

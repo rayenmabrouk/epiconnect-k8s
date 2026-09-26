@@ -8,6 +8,7 @@
   "dns": ["1.1.1.1", "8.8.8.8"],
   "labRoot": "C:\\HyperV\\k3s-lab",
   "diskSizeGB": 30,
+  "ingress": { "hostname": "epiconnect.lab", "ip": "192.168.50.10" },
   "ubuntu": {
     "release": "noble",
     "baseUrl": "https://cloud-images.ubuntu.com/releases/noble/release",

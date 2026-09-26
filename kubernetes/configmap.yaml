@@ -1,0 +1,45 @@
+---
+# Non-secret configuration, injected into the application as environment
+# variables (envFrom). The same image runs on AWS ECS with different values:
+# configuration lives in the platform, not in the image (12-factor).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: epiconnect-config
+  namespace: epiconnect
+  labels:
+    app.kubernetes.io/name: epiconnect
+    app.kubernetes.io/part-of: epiconnect
+data:
+  DEBUG: "false"
+  ALLOWED_HOSTS: "epiconnect.lab"
+  CSRF_TRUSTED_ORIGINS: "https://epiconnect.lab"
+
+  # TLS ends at the Ingress controller (Traefik). It tells Django the original
+  # scheme with X-Forwarded-Proto, so Django can redirect HTTP to HTTPS and
+  # mark cookies Secure.
+  SECURE_PROXY_SSL_HEADER: "HTTP_X_FORWARDED_PROTO"
+  SECURE_SSL_REDIRECT: "true"
+  # HSTS off in the lab: the certificate is self-signed, and HSTS would stop
+  # browsers from letting you accept it. Production value: 31536000.
+  SECURE_HSTS_SECONDS: "0"
+  # One reverse proxy (Traefik) appends to X-Forwarded-For
+  TRUSTED_PROXY_COUNT: "1"
+
+  # Uploaded files live on the NFS volume mounted at /app/media and are served
+  # by Django (on AWS: S3 + pre-signed URLs).
+  SERVE_MEDIA: "true"
+
+  # PostgreSQL inside the cluster, reached through its Service name.
+  # No TLS on this hop: traffic stays on the pod network and a NetworkPolicy
+  # allows only the application to connect. Production: sslmode=require.
+  DB_HOST: "postgres"
+  DB_PORT: "5432"
+  DB_NAME: "epiconnect"
+  DB_USER: "epiconnect"
+  DB_SSLMODE: "disable"
+
+  GUNICORN_WORKERS: "2"
+  GUNICORN_THREADS: "4"
+  LOG_JSON: "true"
+  LOG_LEVEL: "INFO"

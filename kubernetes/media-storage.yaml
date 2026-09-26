@@ -1,0 +1,43 @@
+---
+# Shared storage for uploaded files (profile pictures, item photos).
+#
+# 3 web replicas run on 2 different nodes and must all see the same files, so
+# the volume must be mountable read-write by many nodes at once:
+# ReadWriteMany (RWX). The NFS export comes from the Ansible nfs_server role.
+#
+# Static provisioning: this PersistentVolume is written by hand and the claim
+# below binds to it by name (no StorageClass, no dynamic provisioner).
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: epiconnect-media
+  labels:
+    app.kubernetes.io/name: epiconnect
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain      # deleting the claim never deletes the files
+  storageClassName: ""
+  mountOptions: [nfsvers=4.1, hard]
+  nfs:
+    server: 192.168.50.10                    # k3s-server
+    path: /srv/nfs/epiconnect-media
+  claimRef:                                  # reserved for this claim only
+    namespace: epiconnect
+    name: epiconnect-media
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: epiconnect-media
+  namespace: epiconnect
+  labels:
+    app.kubernetes.io/name: epiconnect
+spec:
+  accessModes: [ReadWriteMany]
+  storageClassName: ""
+  volumeName: epiconnect-media
+  resources:
+    requests:
+      storage: 5Gi

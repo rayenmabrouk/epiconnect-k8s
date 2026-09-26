@@ -1,0 +1,29 @@
+---
+# HTTP routing from outside the cluster: https://epiconnect.lab -> Service
+# "epiconnect". Traefik (k3s's bundled Ingress controller) implements it and
+# terminates TLS with the certificate in Secret "epiconnect-tls"
+# (scripts/gen-tls.sh). k3s's ServiceLB exposes Traefik on ports 80/443 of
+# every node, so any node IP answers.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: epiconnect
+  namespace: epiconnect
+  labels:
+    app.kubernetes.io/name: epiconnect
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts: [epiconnect.lab]
+      secretName: epiconnect-tls
+  rules:
+    - host: epiconnect.lab
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: epiconnect
+                port:
+                  name: http

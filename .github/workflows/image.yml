@@ -1,0 +1,106 @@
+---
+# Builds the EPIConnect container image from the pinned app/ submodule and
+# pushes it to GitHub Container Registry:
+#   ghcr.io/<owner>/epiconnect:<EPIConnect commit, 7 chars>
+#
+# The image tag IS the application version: the cluster manifests (and later
+# the Helm values) reference that tag, so what runs is always traceable to one
+# EPIConnect commit.
+#
+# Triggers
+#   push to main that moves the app/ submodule (new application version)
+#   manual run, optionally with app_ref = any EPIConnect commit/branch
+#   (used to build "version B" for the rolling-update demo)
+#
+# This workflow does NOT deploy: the cluster runs on a laptop that GitHub
+# cannot (and should not) reach. Deployment is a local step: make deploy-manifests.
+name: Image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - app
+      - .github/workflows/image.yml
+  workflow_dispatch:
+    inputs:
+      app_ref:
+        description: "EPIConnect commit or branch to build (empty = the pinned app/ submodule)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: image-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and push
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write          # push to ghcr.io with the workflow's own token
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+          persist-credentials: false
+
+      - name: Select the application version
+        if: inputs.app_ref != ''
+        env:
+          APP_REF: ${{ inputs.app_ref }}
+        run: |
+          git -C app fetch --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
+          # a commit ID, or a branch name of the EPIConnect repository
+          commit="$(git -C app rev-parse --verify --quiet "${APP_REF}^{commit}" \
+            || git -C app rev-parse --verify "origin/${APP_REF}^{commit}")"
+          git -C app checkout --detach "${commit}"
+
+      - name: Image name and tag
+        id: meta
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "image=ghcr.io/${owner}/epiconnect" >> "$GITHUB_OUTPUT"
+          echo "tag=$(git -C app rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+          echo "revision=$(git -C app rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: app
+          push: true
+          tags: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
+          # Links the package to this repository on GitHub
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ steps.meta.outputs.revision }}
+            org.opencontainers.image.title=EPIConnect
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Summary
+        env:
+          IMAGE: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
+        run: |
+          {
+            echo "### Image pushed"
+            echo
+            echo "\`${IMAGE}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

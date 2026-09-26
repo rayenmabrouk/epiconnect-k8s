@@ -76,6 +76,28 @@ lint: ## yamllint + ansible-lint (production profile) + shellcheck
 nodes: ## Nodes with their IPs, roles and versions
 	kubectl get nodes -o wide -L epiconnect.io/pool
 
+##@ Application (raw manifests)
+secrets: ## Create the application Secret once (random values; admin password saved locally)
+	scripts/create-secrets.sh
+
+tls: ## Lab CA + certificate for epiconnect.lab -> Secret epiconnect-tls
+	scripts/gen-tls.sh
+
+trust-ca: ## Optional: trust the lab CA in Windows (current user) - no browser warning
+	@local_app="$$(powershell.exe -NoProfile -Command '$$env:LOCALAPPDATA' | tr -d '\r')"; \
+	dest="$$(wslpath -u "$$local_app")/epiconnect-k8s"; mkdir -p "$$dest"; \
+	cp ~/.config/epiconnect-k8s/tls/ca.crt "$$dest/lab-ca.crt"; \
+	powershell.exe -NoProfile -Command "Import-Certificate -FilePath '$$(wslpath -w "$$dest/lab-ca.crt")' -CertStoreLocation Cert:\CurrentUser\Root | Format-List Subject,NotAfter"
+
+deploy-manifests: ## Deploy EPIConnect from kubernetes/ in dependency order (waits at each step)
+	scripts/deploy-manifests.sh
+
+verify: ## Milestone 4 checks: DB, migrations, ingress, probes, replicas, RWX, NetworkPolicy, security
+	scripts/verify-app.sh
+
+app-status: ## Everything in the epiconnect namespace
+	kubectl -n epiconnect get all,pvc,ingress,networkpolicy -o wide
+
 ##@ Connectivity
 ping: ## SSH to every node: hostname, IP, uptime, cloud-init status
 	@for n in $(NODES); do \
@@ -91,4 +113,4 @@ forget-hosts: ## Remove lab host keys from known_hosts (after recreating VMs)
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"} /^##@/ {printf "\n%s\n", substr($$0, 5)} /^[a-z-]+:.*##/ {printf "  %-14s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-.PHONY: vault-init provision provision-check lint nodes bootstrap host-init image vms status start stop poweroff checkpoint restore destroy-vms ping forget-hosts help
+.PHONY: vault-init provision provision-check lint nodes secrets tls trust-ca deploy-manifests verify app-status bootstrap host-init image vms status start stop poweroff checkpoint restore destroy-vms ping forget-hosts help

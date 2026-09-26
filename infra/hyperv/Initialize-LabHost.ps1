@@ -13,6 +13,8 @@
        never change.
     4. Creates the lab folder (VM disks, seed ISOs) writable by you.
     5. Enables WSL mirrored networking so WSL can reach 192.168.50.0/24.
+    6. Maps the application hostname (epiconnect.lab) to a node IP in the
+       Windows hosts file, so browsers reach the cluster's Ingress by name.
 
     Idempotent: each step checks the current state and only changes what differs.
 
@@ -99,6 +101,22 @@ if (-not (Test-Path $wslConfig)) {
     Ok 'mirrored mode already set'
 } else {
     Write-Warning "$wslConfig exists without networkingMode=mirrored. Add it under [wsl2] yourself, then run 'wsl --shutdown'."
+}
+
+# 6. Hosts file entry for the application
+Step "Hosts entry $($lab.ingress.hostname) -> $($lab.ingress.ip)"
+$hostsFile = Join-Path $env:SystemRoot 'System32\drivers\etc\hosts'
+$escapedHost = [regex]::Escape($lab.ingress.hostname)
+$current = @(Get-Content -Path $hostsFile)
+$wanted = "$($lab.ingress.ip) $($lab.ingress.hostname)"
+if ($current | Where-Object { $_ -match ('^\s*' + [regex]::Escape($wanted) + '(\s|$)') }) {
+    Ok 'present'
+} else {
+    # Drop an outdated mapping for the same name, then add the current one
+    $current = @($current | Where-Object { $_ -notmatch ('^\s*\S+\s+' + $escapedHost + '(\s|$)') })
+    $current += "$wanted   # epiconnect-k8s lab ingress"
+    Set-Content -Path $hostsFile -Value $current -Encoding ASCII
+    Ok 'added'
 }
 
 Write-Host ''

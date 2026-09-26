@@ -1,0 +1,21 @@
+---
+# Stable virtual IP + DNS name ("epiconnect") in front of the web pods.
+# kube-proxy load-balances connections to the pods whose readiness probe
+# passes; a pod failing readiness is removed from the endpoints.
+apiVersion: v1
+kind: Service
+metadata:
+  name: epiconnect
+  namespace: epiconnect
+  labels:
+    app.kubernetes.io/name: epiconnect
+    app.kubernetes.io/component: web
+spec:
+  type: ClusterIP                  # reachable inside the cluster only; the Ingress exposes it
+  selector:
+    app.kubernetes.io/name: epiconnect
+    app.kubernetes.io/component: web
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

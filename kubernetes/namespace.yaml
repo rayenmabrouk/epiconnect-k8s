@@ -1,0 +1,16 @@
+---
+# Everything EPIConnect runs in one namespace: a boundary for names, RBAC,
+# NetworkPolicies and Pod Security.
+#
+# Pod Security Admission, "restricted" profile: the API server REJECTS any pod
+# here that could run as root, escalate privileges, keep Linux capabilities or
+# skip the default seccomp profile. Security is enforced by the platform, not
+# left to each manifest author.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: epiconnect
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted

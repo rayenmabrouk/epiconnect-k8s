@@ -1,0 +1,120 @@
+---
+# PostgreSQL as a StatefulSet: a pod with a stable name (postgres-0) and its
+# OWN persistent volume that follows it across restarts and rescheduling.
+# A Deployment would treat pods as interchangeable and cannot give each one
+# a dedicated volume.
+#
+# Storage: local-path (k3s's built-in provisioner) creates a directory on the
+# node's disk -> ReadWriteOnce, fast, and correct for a database (real fsync,
+# single writer). Consequence: the volume lives on ONE node, so the pod is
+# pinned there (nodeSelector below; the provisioner also records node affinity).
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: epiconnect
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: epiconnect
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgres
+        app.kubernetes.io/component: database
+        app.kubernetes.io/part-of: epiconnect
+    spec:
+      nodeSelector:
+        epiconnect.io/pool: data               # k3s-server (Ansible node label)
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60        # let PostgreSQL finish a clean shutdown
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70                          # "postgres" user in the alpine image
+        runAsGroup: 70
+        fsGroup: 70
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postgres
+          image: postgres:17-alpine
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: epiconnect
+            - name: POSTGRES_USER
+              value: epiconnect
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: epiconnect-secrets
+                  key: db-password
+            # A subdirectory of the volume: initdb requires an empty directory
+            # it owns, and a volume root may contain lost+found.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          # pg_isready: does the server accept connections? Readiness gates
+          # traffic; liveness restarts a hung server (more lenient); startup
+          # gives the first boot (initdb) time before liveness starts counting.
+          startupProbe:
+            exec:
+              command: [pg_isready, -h, 127.0.0.1, -U, epiconnect, -d, epiconnect]
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            exec:
+              command: [pg_isready, -h, 127.0.0.1, -U, epiconnect, -d, epiconnect]
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command: [pg_isready, -h, 127.0.0.1, -U, epiconnect, -d, epiconnect]
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: run                            # Unix socket and lock file
+              mountPath: /var/run/postgresql
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: run
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+  # One PersistentVolumeClaim per pod, created from this template and named
+  # data-postgres-0. Deleting the pod (or the StatefulSet) keeps the claim and
+  # its data; only deleting the claim itself removes the data.
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app.kubernetes.io/name: postgres
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 2Gi

@@ -1,0 +1,103 @@
+---
+# Pod-to-pod firewall for the namespace (enforced by k3s's embedded
+# kube-router controller). Model: deny everything, then allow only the flows
+# the application needs:
+#
+#   Traefik (kube-system) ──8000──> web ──5432──> postgres
+#   migrate / bootstrap-admin Jobs ──5432──> postgres
+#   every pod ──53──> CoreDNS (name resolution)
+#
+# Anything else, e.g. a debug pod trying to reach PostgreSQL, times out.
+
+# 1. Default deny: selects every pod; with no rules, nothing in or out.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: epiconnect
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# 2. DNS: every pod may query CoreDNS (needed to resolve "postgres").
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: epiconnect
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+---
+# 3. Web pods accept traffic only from the Ingress controller.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: web-from-ingress
+  namespace: epiconnect
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: epiconnect
+      app.kubernetes.io/component: web
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+      ports:
+        - {protocol: TCP, port: 8000}
+---
+# 4. PostgreSQL accepts connections only from pods labelled as database clients.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-from-db-clients
+  namespace: epiconnect
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              epiconnect.io/db-client: "true"
+      ports:
+        - {protocol: TCP, port: 5432}
+---
+# 5. ...and those clients may open connections to PostgreSQL (the egress side
+#    of the same flow: both ends must allow it).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-clients-to-postgres
+  namespace: epiconnect
+spec:
+  podSelector:
+    matchLabels:
+      epiconnect.io/db-client: "true"
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgres
+      ports:
+        - {protocol: TCP, port: 5432}
