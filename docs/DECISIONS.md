@@ -137,3 +137,24 @@ Format: **Decision** / Why / Rejected alternatives / Failure mode it addresses /
 
 - **Decision:** the chart references `existingSecret`; secret values and the namespace's Pod Security label are managed separately.
 - **Failure mode addressed:** secret values stored in Helm release history, values files or shell history; an application chart weakening a platform security policy.
+
+## D21. CI tests the image before publishing it; tags are immutable
+
+- **Decision:** one workflow: lint, manifest/chart validation, image build + Trivy gate, smoke test of that image on a throwaway k3d cluster, and only then a push to GHCR (main branch only). An existing tag is never pushed again.
+- **Why:** the registry only ever receives images that were scanned and seen working with the chart. The tag names an EPIConnect commit that may already be running in the lab, so overwriting it would change what "that version" means after the fact.
+- **Rejected:** push first, test later (a broken or vulnerable image is already published); `:latest` or mutable tags (see D12); kind instead of k3d (works, but k3d runs the lab's exact distribution: k3s 1.36 with Traefik, local-path and the same NetworkPolicy controller).
+- **Failure mode addressed:** a chart change or an application change that only breaks on a real API server (Pod Security admission, probes, migrations, NetworkPolicy), discovered in the lab instead of in CI.
+- **Accepted:** the smoke test cannot cover NFS/ReadWriteMany or node failure (one node, no NFS server). Those are covered by the lab verification and demos.
+
+## D22. Tools pinned by checksums committed in the repository
+
+- **Decision:** `scripts/install-tools.sh` downloads helm, kubeconform, k3d at fixed versions and checks each against a SHA-256 written in the script; actions are pinned to commit SHAs; zizmor audits the workflow on every run.
+- **Why:** a checksum downloaded next to a binary only detects corruption. In March 2026 attackers replaced Trivy's release binary and re-pointed the tags of its GitHub Actions ([GHSA-69fq-xp46-6x23](https://github.com/advisories/GHSA-69fq-xp46-6x23)); pipelines that trusted tags ran the attacker's code with their secrets. A checksum or SHA in the repository can only change through a reviewed commit.
+- **Failure mode addressed:** a compromised upstream release running inside CI with the token that can push images.
+- **Cost:** versions do not update themselves: bumping a tool means updating its version and checksum together.
+
+## D23. No deployment from CI
+
+- **Decision:** CI publishes the image and stops. Deployment is `make deploy-helm` on the control machine.
+- **Why:** the lab cluster is on a laptop behind NAT. Letting GitHub reach it would mean exposing the API server or storing a cluster credential in GitHub, both of which make GitHub part of the cluster's attack surface.
+- **Production answer:** a pull-based deployment (a GitOps agent inside the cluster watching the repository) or a self-hosted runner inside the network: in both, credentials never leave the network.

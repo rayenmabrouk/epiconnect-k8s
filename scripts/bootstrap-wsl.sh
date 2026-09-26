@@ -59,6 +59,9 @@ if [[ "$("${BIN}/helm" version --template '{{.Version}}' 2>/dev/null)" != "${HEL
   install -m 0755 "${tmp}/linux-amd64/helm" "${BIN}/helm"
 fi
 
+log "kubeconform (manifest validation, same version as CI)"
+[[ -x "${BIN}/kubeconform" ]] || "${REPO_ROOT}/scripts/install-tools.sh" "${BIN}" kubeconform
+
 log "Lab SSH key ${SSH_KEY}"
 mkdir -p "${HOME}/.ssh" && chmod 700 "${HOME}/.ssh"
 if [[ ! -f "${SSH_KEY}" ]]; then

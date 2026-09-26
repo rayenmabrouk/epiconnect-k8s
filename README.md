@@ -1,5 +1,7 @@
 # epiconnect-k8s
 
+[![CI](https://github.com/rayenmabrouk/epiconnect-k8s/actions/workflows/ci.yml/badge.svg)](https://github.com/rayenmabrouk/epiconnect-k8s/actions/workflows/ci.yml)
+
 **EPIConnect on a self-hosted, three-node Kubernetes (k3s) cluster, provisioned with Ansible on Ubuntu VMs, deployed with raw manifests and then Helm, at zero cost.**
 
 The same application already runs on AWS (ECS Fargate, RDS, ALB) in the
@@ -19,8 +21,8 @@ Linux hosts, configuration management, container orchestration, cluster networki
 | 2 | Ansible roles: users, SSH hardening, UFW, NFS, k3s server/agents | done ([evidence](evidence/05-ansible-idempotency/summary.md)) |
 | 3 | Raw Kubernetes manifests | done |
 | 4 | Application verification | done ([12/12 checks](evidence/04-app-verification/report.md)) |
-| 5 | Helm chart | in progress |
-| 6 | GitHub Actions CI + GHCR | |
+| 5 | Helm chart | done ([12/12 checks under Helm](evidence/04-app-verification/report.md)) |
+| 6 | GitHub Actions CI + GHCR | in progress |
 | 7 | Failure demonstrations with evidence | |
 | 8 | Final documentation | |
 
@@ -76,7 +78,7 @@ demos/05-ansible-idempotency.sh --fresh   # evidence: rebuild from clean VMs, 2n
 
 ## Deploy EPIConnect with raw manifests (Milestones 3-4)
 
-The image is built by GitHub Actions (`.github/workflows/image.yml`) from the pinned `app/`
+The image is built by GitHub Actions (`.github/workflows/ci.yml`, see below) from the pinned `app/`
 submodule and published to `ghcr.io/rayenmabrouk/epiconnect:<EPIConnect commit>`.
 
 ```bash
@@ -103,6 +105,34 @@ make verify         # the same 12 checks, now against the Helm release
 make helm-history
 ```
 
+## Continuous integration (Milestone 6)
+
+`.github/workflows/ci.yml` runs on every push and pull request:
+
+```
+ lint ─────────────────────────────────────────────┐
+ manifests (helm lint, kubeconform) ──┐            ├─> publish to GHCR (main only,
+ image (build, Trivy gate) ───────────┴─> smoke ───┘   existing tags never overwritten)
+                                          (k3d)
+```
+
+| CI does | CI does not |
+|---|---|
+| lint YAML, Ansible (production profile), shell, PowerShell, the workflow itself (zizmor), git history (gitleaks) | run Ansible against the VMs |
+| validate the raw manifests and the rendered chart against the Kubernetes 1.36 schemas; `helm lint` | talk to the lab cluster: it is on a laptop behind NAT, and giving GitHub credentials to it would widen its attack surface |
+| build the image and fail on fixable HIGH/CRITICAL vulnerabilities (Trivy) | deploy: that is `make deploy-helm` on the control machine, with the tag CI published |
+| install the chart **and the image just built** on a throwaway k3d cluster (k3s 1.36, Pod Security restricted, NetworkPolicy) and test: HTTPS through Traefik, DB isolation, upgrade, rollback | test NFS/ReadWriteMany or node failures (single node, no NFS server): those are the lab demos |
+| push that exact image to GHCR, tagged with the EPIConnect commit | have the vault password: Ansible is linted against the example vault |
+
+Every tool CI downloads is pinned to a version **and a SHA-256 committed in this repository**
+(`scripts/install-tools.sh`); every action is pinned to a commit SHA. The same scripts run locally:
+
+```bash
+make lint           # also run by CI
+make validate       # manifests + chart against the schemas, helm lint (no cluster needed)
+make smoke          # the CI smoke test on a local k3d cluster (needs Docker + k3d)
+```
+
 `make help` lists every operation.
 
 ## Documentation
@@ -112,4 +142,5 @@ make helm-history
 - [Study notes: Ansible and k3s](docs/learning/02-ansible-and-k3s.md)
 - [Study notes: Kubernetes manifests and verification](docs/learning/03-kubernetes-manifests.md)
 - [Study notes: Helm](docs/learning/04-helm.md)
+- [Study notes: CI](docs/learning/05-ci.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)

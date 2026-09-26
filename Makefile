@@ -68,10 +68,14 @@ provision: ## Configure every node and build the cluster (TAGS=base|storage|k3s 
 provision-check: ## Dry run: show what would change, change nothing (--check --diff)
 	cd ansible && ansible-playbook playbooks/site.yml --check --diff $(if $(TAGS),--tags $(TAGS),)
 
-lint: ## yamllint + ansible-lint (production profile) + shellcheck
+lint: ## yamllint + ansible-lint (production profile) + shellcheck + zizmor (workflows)
 	yamllint -c .yamllint.yml .
 	cd ansible && ansible-lint
-	shellcheck scripts/*.sh demos/*.sh infra/hyperv/*.sh
+	shellcheck -x scripts/*.sh scripts/lib/*.sh demos/*.sh infra/hyperv/*.sh
+	zizmor --min-severity low .github/workflows
+
+validate: ## Offline: raw manifests + rendered chart against the Kubernetes schemas, helm lint (same as CI)
+	scripts/validate-manifests.sh
 
 ##@ Cluster
 nodes: ## Nodes with their IPs, roles and versions
@@ -107,6 +111,9 @@ helm-diff: ## What the chart would change on the live cluster (kubectl diff)
 deploy-helm: ## Install/upgrade the release (adopts a raw-manifest deployment first). ARGS="--set image.tag=..."
 	scripts/deploy-helm.sh $(ARGS)
 
+smoke: ## CI smoke test on a throwaway local k3d cluster (needs Docker + k3d: scripts/install-tools.sh ~/.local/bin k3d)
+	scripts/smoke-test.sh $(ARGS)
+
 helm-history: ## Release revisions (for helm rollback)
 	helm --namespace epiconnect history epiconnect
 
@@ -128,4 +135,4 @@ forget-hosts: ## Remove lab host keys from known_hosts (after recreating VMs)
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"} /^##@/ {printf "\n%s\n", substr($$0, 5)} /^[a-z-]+:.*##/ {printf "  %-14s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-.PHONY: helm-check helm-diff deploy-helm helm-history vault-init provision provision-check lint nodes secrets tls trust-ca deploy-manifests verify app-status bootstrap host-init image vms status start stop poweroff checkpoint restore destroy-vms ping forget-hosts help
+.PHONY: validate smoke helm-check helm-diff deploy-helm helm-history vault-init provision provision-check lint nodes secrets tls trust-ca deploy-manifests verify app-status bootstrap host-init image vms status start stop poweroff checkpoint restore destroy-vms ping forget-hosts help

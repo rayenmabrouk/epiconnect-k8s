@@ -1,3 +1,4 @@
+{{- if .Values.media.nfs.server }}
 # Uploads: static NFS PersistentVolume (ReadWriteMany) and the claim bound to it by name.
 apiVersion: v1
 kind: PersistentVolume
@@ -34,3 +35,22 @@ spec:
   resources:
     requests:
       storage: {{ .Values.media.size }}
+{{- else }}
+# Uploads without an NFS server (the CI smoke test): a dynamically provisioned
+# ReadWriteOnce claim. Only valid while every web pod runs on the same node.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "epiconnect.fullname" . }}-media
+  labels:
+    app.kubernetes.io/name: epiconnect
+    {{- include "epiconnect.labels" . | nindent 4 }}
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with .Values.media.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.media.size }}
+{{- end }}

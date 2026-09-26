@@ -1,0 +1,8 @@
+---
+# Values for the CI smoke test (scripts/smoke-test.sh): a throwaway k3d cluster
+# with one server (labelled pool=data) and one agent (pool=app), and no NFS
+# server. Only the uploads volume differs from the lab.
+media:
+  nfs:
+    server: ""
+  storageClass: local-path

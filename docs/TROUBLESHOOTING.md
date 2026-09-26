@@ -146,3 +146,19 @@ something if the allowed case succeeds under the same conditions.
 | `context deadline exceeded` after `--wait` | a resource never became ready within `--timeout` | `kubectl -n epiconnect get pods`, events, Job logs; then `helm rollback` if needed |
 | release `pending-upgrade` / `another operation is in progress` | an interrupted helm command | `helm -n epiconnect history epiconnect`, then `helm -n epiconnect rollback epiconnect <last deployed revision>` |
 | `make deploy-manifests` refuses to run | the app is owned by the Helm release now | use `make deploy-helm` |
+
+## CI (GitHub Actions)
+
+The job summary of each run (Actions tab → the run) lists what passed; the smoke test prints
+pods, events, logs and `helm history` when it fails.
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `checksum mismatch for https://...` | the downloaded tool differs from the SHA-256 in `scripts/install-tools.sh` | do **not** just update the checksum: check the tool's release page/advisories first; if the new version is legitimate, bump version and checksum together |
+| ansible-lint `internal-error ... --syntax-check` | the vault could not be decrypted | CI uses `vault.yml.example`; locally, check `~/.config/epiconnect-k8s/vault-pass` |
+| Trivy step fails | a fixable HIGH/CRITICAL vulnerability in the image | rebuild after updating the base image/dependency in EPIConnect; accept a risk only in `app/.trivyignore` with a reason and review date |
+| kubeconform `additional properties 'x' not allowed` | a field name typo, or a field in the wrong place | fix the manifest/template; the error gives the JSON path |
+| smoke: `helm install` times out | same causes as on the lab (image pull, probes, migrations) | read the diagnostics block of the job log; reproduce locally with `KEEP_CLUSTER=1 make smoke` |
+| smoke: NetworkPolicy check fails | see "A debug pod cannot resolve a Service name" above; or policy enforcement not ready yet | the probe retries ~20 s; inspect with `KEEP_CLUSTER=1 make smoke` |
+| publish: `denied: permission_denied` | the workflow token cannot write the package | package settings → Manage Actions access → give this repository **Write** |
+| publish says "already published" | the tag exists (tags are immutable by design) | a new image needs a new EPIConnect commit (or `app_ref`) |

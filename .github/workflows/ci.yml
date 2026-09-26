@@ -1,0 +1,252 @@
+---
+# Continuous integration for the infrastructure code and the application image.
+#
+#   lint       yamllint, ansible-lint, shellcheck, PSScriptAnalyzer, zizmor, gitleaks
+#   manifests  raw manifests + Helm chart: helm lint, schema validation (kubeconform)
+#   image      build the EPIConnect image from the pinned app/ submodule, Trivy gate
+#   smoke      install the chart + that image on a throwaway k3d cluster and test it
+#   publish    push the tested image to ghcr.io/<owner>/epiconnect:<EPIConnect commit>
+#              (main only, never overwrites an existing tag)
+#
+# What CI does NOT do: deploy. The lab cluster runs on a laptop behind NAT that
+# GitHub cannot reach, and it should not be able to: giving CI credentials to
+# the cluster would make GitHub part of the cluster's attack surface. Deployment
+# is a local, deliberate step (make deploy-helm), using the image CI published.
+#
+# Manual run with app_ref = any EPIConnect commit/branch builds, tests and
+# publishes that version instead of the pinned one (the rolling-update demo's
+# "version B").
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      app_ref:
+        description: "EPIConnect commit or branch to build (empty = the pinned app/ submodule)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: ci-${{ github.ref }}-${{ inputs.app_ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0              # gitleaks scans the whole history
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"      # = Ubuntu 24.04 on the control machine
+
+      - name: Install the pinned tooling
+        run: |
+          pip install -r requirements-tools.txt
+          ansible-galaxy collection install -r ansible/requirements.yml
+
+      # CI never gets the vault password: the encrypted vault is replaced by its
+      # documented example so that the playbooks can be syntax-checked.
+      - name: Use the example vault
+        run: |
+          cp ansible/inventory/group_vars/all/vault.yml.example ansible/inventory/group_vars/all/vault.yml
+          echo "ci-lint-only" > "${RUNNER_TEMP}/vault-pass"
+          echo "ANSIBLE_VAULT_PASSWORD_FILE=${RUNNER_TEMP}/vault-pass" >> "$GITHUB_ENV"
+
+      - name: yamllint, ansible-lint, shellcheck, zizmor
+        env:
+          GH_TOKEN: ${{ github.token }}   # zizmor online audits (e.g. every pinned SHA exists in its action's repository)
+        run: make lint
+
+      - name: PSScriptAnalyzer (Hyper-V scripts)
+        shell: pwsh
+        run: |
+          Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force
+          $findings = Invoke-ScriptAnalyzer -Path infra/hyperv -Recurse -Settings infra/hyperv/PSScriptAnalyzerSettings.psd1
+          $findings | Format-Table -AutoSize
+          if ($findings) { exit 1 }
+
+      - name: gitleaks (secrets in the git history)
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITLEAKS_ENABLE_COMMENTS: "false"   # no pull-request write permission needed
+
+  manifests:
+    name: Manifests and chart
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install helm and kubeconform (pinned, checksums in the repository)
+        run: |
+          scripts/install-tools.sh "${RUNNER_TEMP}/bin" helm kubeconform
+          echo "${RUNNER_TEMP}/bin" >> "$GITHUB_PATH"
+
+      - name: Validate
+        run: scripts/validate-manifests.sh
+
+  image:
+    name: Build and scan image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+          persist-credentials: false
+
+      - name: Select the application version
+        if: inputs.app_ref != ''
+        env:
+          APP_REF: ${{ inputs.app_ref }}
+        run: |
+          git -C app fetch --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
+          # a commit ID, or a branch name of the EPIConnect repository
+          commit="$(git -C app rev-parse --verify --quiet "${APP_REF}^{commit}" \
+            || git -C app rev-parse --verify "origin/${APP_REF}^{commit}")"
+          git -C app checkout --detach "${commit}"
+
+      - name: Image name and tag
+        id: meta
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "image=ghcr.io/${owner}/epiconnect" >> "$GITHUB_OUTPUT"
+          echo "tag=$(git -C app rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+          echo "revision=$(git -C app rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build (not pushed yet)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: app
+          load: true
+          push: false
+          tags: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
+          # Links the package to this repository on GitHub
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ steps.meta.outputs.revision }}
+            org.opencontainers.image.title=EPIConnect
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Same gate and same exception file as the EPIConnect repository: any
+      # HIGH/CRITICAL vulnerability that has a fix available fails the build.
+      - name: Vulnerability gate (Trivy)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          vuln-type: os,library
+          scanners: vuln,secret
+          exit-code: "1"
+          trivyignores: app/.trivyignore
+
+      - name: Save the image for the next jobs
+        env:
+          IMAGE: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
+        run: docker save "${IMAGE}" | gzip > "${RUNNER_TEMP}/image.tar.gz"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: image
+          path: ${{ runner.temp }}/image.tar.gz
+          retention-days: 1
+          compression-level: 0        # already gzipped
+
+  smoke:
+    name: Smoke test on k3d
+    needs: [manifests, image]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install helm, kubectl, k3d (pinned)
+        run: |
+          scripts/install-tools.sh "${RUNNER_TEMP}/bin" helm kubectl k3d
+          echo "${RUNNER_TEMP}/bin" >> "$GITHUB_PATH"
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: image
+          path: ${{ runner.temp }}
+
+      - name: Load the image built by this run
+        run: gunzip -c "${RUNNER_TEMP}/image.tar.gz" | docker load
+
+      - name: Smoke test
+        env:
+          TAG: ${{ needs.image.outputs.tag }}
+        run: scripts/smoke-test.sh "${TAG}"
+
+  publish:
+    name: Publish image
+    needs: [lint, image, smoke]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write          # push to ghcr.io with the workflow's own token
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: image
+          path: ${{ runner.temp }}
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # The image pushed is the exact image that was scanned and smoke-tested.
+      # Tags are immutable: a tag names one EPIConnect commit, and an existing
+      # tag may already be running in the lab, so it is never overwritten.
+      - name: Push (unless the tag already exists)
+        env:
+          IMAGE: ${{ needs.image.outputs.image }}:${{ needs.image.outputs.tag }}
+        run: |
+          if docker manifest inspect "${IMAGE}" >/dev/null 2>&1; then
+            result="already published, left unchanged"
+          else
+            gunzip -c "${RUNNER_TEMP}/image.tar.gz" | docker load
+            docker push "${IMAGE}"
+            result="pushed"
+          fi
+          echo "${IMAGE}: ${result}"
+          {
+            echo "### Image"
+            echo
+            echo "\`${IMAGE}\`: ${result}"
+            echo
+            echo "Deploy it on the lab (control machine): \`make deploy-helm ARGS=\"--set image.tag=${IMAGE##*:}\"\`"
+          } >> "$GITHUB_STEP_SUMMARY"
