@@ -135,3 +135,14 @@ names like `postgres` fail there while they work in the application (glibc). Use
 full name: `postgres.epiconnect.svc.cluster.local`. When testing a NetworkPolicy,
 always run a positive control too (a pod that *should* connect): "blocked" only means
 something if the allowed case succeeds under the same conditions.
+
+## Helm
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `invalid ownership metadata; label validation error: missing key "app.kubernetes.io/managed-by"` | object created by `kubectl apply`, not yet adopted | `scripts/adopt-into-helm.sh` (run automatically by `make deploy-helm` on the first deploy) |
+| `Apply failed with N conflicts` / `conflict with "kubectl-..."` | server-side apply: a field is owned by another manager with a different value (e.g. a manual `kubectl edit`) | inspect with `kubectl get <obj> -o yaml --show-managed-fields`; revert the manual change, or re-run once with `ARGS=--force-conflicts` if the chart is right |
+| `spec: Forbidden: updates to statefulset spec for fields other than ...` | an immutable field changed (volumeClaimTemplates, selector) | revert the value; changing PostgreSQL's storage size needs a new volume, not an upgrade |
+| `context deadline exceeded` after `--wait` | a resource never became ready within `--timeout` | `kubectl -n epiconnect get pods`, events, Job logs; then `helm rollback` if needed |
+| release `pending-upgrade` / `another operation is in progress` | an interrupted helm command | `helm -n epiconnect history epiconnect`, then `helm -n epiconnect rollback epiconnect <last deployed revision>` |
+| `make deploy-manifests` refuses to run | the app is owned by the Helm release now | use `make deploy-helm` |

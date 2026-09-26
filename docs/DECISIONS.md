@@ -125,3 +125,15 @@ Format: **Decision** / Why / Rejected alternatives / Failure mode it addresses /
 
 - **Decision:** deploy with plain YAML first; convert to a Helm chart only once it works (Milestone 5).
 - **Why:** each object is understood on its own before being templated; the duplication visible here (image tag in 4 places, repeated pod security blocks, ordering in a script) is the concrete reason for Helm.
+
+## D19. Own Helm chart, written to adopt the running deployment
+
+- **Decision:** `helm/epiconnect` renders the same names, selectors and StatefulSet claim templates as `kubernetes/`; `scripts/adopt-into-helm.sh` hands the live objects to the release; the first deploy uses `--force-conflicts` once (Helm 4 server-side apply).
+- **Rejected:** delete and reinstall (downtime; the database volume would have to be re-bound by hand); a community PostgreSQL chart (hides the StatefulSet this project exists to show, and its images and defaults change outside my control).
+- **Failure mode addressed:** "switching tools" turning into an outage or a data loss.
+- **Accepted:** one release per namespace (fixed object names such as `postgres`).
+
+## D20. Namespace and Secrets outside the chart
+
+- **Decision:** the chart references `existingSecret`; secret values and the namespace's Pod Security label are managed separately.
+- **Failure mode addressed:** secret values stored in Helm release history, values files or shell history; an application chart weakening a platform security policy.

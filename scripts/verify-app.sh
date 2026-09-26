@@ -57,13 +57,17 @@ c_postgres() {
 }
 
 c_migrations() {
-  local pending job_ok=true
-  # The Job deletes itself 24 h after finishing (ttlSecondsAfterFinished); if it
-  # still exists it must have succeeded. Either way no migration may be pending.
-  if kubectl -n ${ns} get job epiconnect-migrate 2>/dev/null; then
-    [[ "$(kubectl -n ${ns} get job epiconnect-migrate -o jsonpath='{.status.succeeded}')" == "1" ]] || job_ok=false
+  local pending job_ok=true latest
+  # Newest migration Job, whatever its name (raw manifests: epiconnect-migrate;
+  # Helm: epiconnect-migrate-<revision>). Jobs delete themselves 24 h after
+  # finishing, so an absent Job is fine; a present one must have succeeded.
+  latest="$(kubectl -n ${ns} get jobs -l app.kubernetes.io/component=migrate \
+    --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1:].metadata.name}' 2>/dev/null)"
+  if [[ -n "${latest}" ]]; then
+    kubectl -n ${ns} get job "${latest}"
+    [[ "$(kubectl -n ${ns} get job "${latest}" -o jsonpath='{.status.succeeded}')" == "1" ]] || job_ok=false
   else
-    echo "job/epiconnect-migrate already cleaned up (TTL)"
+    echo "no migration Job left (cleaned up after 24 h)"
   fi
   pending="$(kubectl -n ${ns} exec deploy/epiconnect -c web -- python manage.py showmigrations --plan | grep -c '\[ \]')"
   echo "unapplied migrations: ${pending}"
@@ -106,7 +110,7 @@ c_https_every_node() {
 
 c_http_redirect() {
   local headers
-  headers="$(curl -s -o /dev/null -D - --max-time 10 --resolve "${host}:80:${node_ips[0]}" "http://${host}/")"
+  headers="$(curl -s -o /dev/null -D - --max-time 10 --resolve "${host}:80:${node_ips[0]}" "http://${host}/" | tr -d '\r')"
   echo "${headers}" | grep -iE '^(HTTP|location)'
   grep -qiE '^location: https://' <<<"${headers}"
 }
@@ -116,7 +120,8 @@ c_load_balancing() {
   for _ in $(seq 1 30); do https_code "${node_ips[0]}" "/lb-check-${nonce}/" >/dev/null; done
   sleep 2
   while read -r name node; do
-    count="$(kubectl -n ${ns} logs "${name}" -c web --since=5m | grep -c "lb-check-${nonce}")"
+    # Only Gunicorn's access-log lines: Django also logs each 404 once more
+    count="$(kubectl -n ${ns} logs "${name}" -c web --since=5m | grep "lb-check-${nonce}" | grep -c '"event": "access"')"
     echo "${name} (${node}): ${count} of 30 requests"
     [[ "${count}" -gt 0 ]] && spread=$((spread + 1))
   done < <(web_pods)

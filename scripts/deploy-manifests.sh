@@ -38,6 +38,13 @@ wait_job() {
   done
 }
 
+# Once the Helm release owns these objects, applying raw YAML over them would
+# have two tools fighting over the same state
+if command -v helm >/dev/null && helm -n "${ns}" status epiconnect >/dev/null 2>&1; then
+  echo "EPIConnect is managed by the Helm release 'epiconnect' now: use 'make deploy-helm'." >&2
+  exit 1
+fi
+
 step "Namespace, configuration, identity, storage, network policies"
 kubectl apply -f "${m}/namespace.yaml"
 for s in epiconnect-secrets epiconnect-tls; do

@@ -1,0 +1,117 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "epiconnect.fullname" . }}
+  labels:
+    {{- include "epiconnect.webSelector" . | nindent 4 }}
+    {{- include "epiconnect.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      {{- include "epiconnect.webSelector" . | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        {{- include "epiconnect.webSelector" . | nindent 8 }}
+        app.kubernetes.io/part-of: epiconnect
+        epiconnect.io/db-client: "true"
+      annotations:
+        # Environment variables are read at container start: a changed ConfigMap
+        # alone would not reach running pods. The checksum changes the pod
+        # template, so Kubernetes rolls the pods.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "epiconnect.fullname" . }}
+      automountServiceAccountToken: false
+      nodeSelector:
+        {{- toYaml .Values.web.nodeSelector | nindent 8 }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              {{- include "epiconnect.webSelector" . | nindent 14 }}
+      tolerations:
+        - key: node.kubernetes.io/unreachable
+          operator: Exists
+          effect: NoExecute
+          tolerationSeconds: {{ .Values.web.nodeFailureTolerationSeconds }}
+        - key: node.kubernetes.io/not-ready
+          operator: Exists
+          effect: NoExecute
+          tolerationSeconds: {{ .Values.web.nodeFailureTolerationSeconds }}
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        {{- include "epiconnect.podSecurityContext" (dict "uid" 10001 "fsGroup" true) | nindent 8 }}
+      initContainers:
+        - name: wait-for-migrations
+          image: {{ include "epiconnect.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - until python manage.py migrate --check >/dev/null 2>&1; do echo "waiting for database migrations"; sleep 5; done
+          envFrom:
+            {{- include "epiconnect.appEnvFrom" . | nindent 12 }}
+          env:
+            {{- include "epiconnect.appSecretEnv" . | nindent 12 }}
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          securityContext:
+            {{- include "epiconnect.containerSecurityContext" . | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      containers:
+        - name: web
+          image: {{ include "epiconnect.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            {{- include "epiconnect.appEnvFrom" . | nindent 12 }}
+          env:
+            {{- include "epiconnect.appSecretEnv" . | nindent 12 }}
+          startupProbe:
+            httpGet: {path: /healthz/, port: http}
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: {path: /healthz/, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: {path: /readyz/, port: http}
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 5
+          resources:
+            {{- toYaml .Values.web.resources | nindent 12 }}
+          securityContext:
+            {{- include "epiconnect.containerSecurityContext" . | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: media
+              mountPath: /app/media
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: media
+          persistentVolumeClaim:
+            claimName: {{ include "epiconnect.fullname" . }}-media

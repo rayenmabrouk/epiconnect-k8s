@@ -1,0 +1,36 @@
+# Uploads: static NFS PersistentVolume (ReadWriteMany) and the claim bound to it by name.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ include "epiconnect.fullname" . }}-media
+  labels:
+    app.kubernetes.io/name: epiconnect
+    {{- include "epiconnect.labels" . | nindent 4 }}
+spec:
+  capacity:
+    storage: {{ .Values.media.size }}
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  mountOptions: [nfsvers=4.1, hard]
+  nfs:
+    server: {{ .Values.media.nfs.server }}
+    path: {{ .Values.media.nfs.path }}
+  claimRef:
+    namespace: {{ .Release.Namespace }}
+    name: {{ include "epiconnect.fullname" . }}-media
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "epiconnect.fullname" . }}-media
+  labels:
+    app.kubernetes.io/name: epiconnect
+    {{- include "epiconnect.labels" . | nindent 4 }}
+spec:
+  accessModes: [ReadWriteMany]
+  storageClassName: ""
+  volumeName: {{ include "epiconnect.fullname" . }}-media
+  resources:
+    requests:
+      storage: {{ .Values.media.size }}

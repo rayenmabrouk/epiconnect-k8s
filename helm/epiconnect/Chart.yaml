@@ -1,0 +1,9 @@
+---
+apiVersion: v2
+name: epiconnect
+description: EPIConnect (Django) with PostgreSQL, uploads on NFS, on a self-hosted k3s cluster
+type: application
+# Chart version: bump when the templates change
+version: 0.1.0
+# Application version: the EPIConnect commit the default image was built from
+appVersion: "0b3cd06"

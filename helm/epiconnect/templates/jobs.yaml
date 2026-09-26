@@ -1,0 +1,63 @@
+{{/*
+One migration Job per release revision (name ends with the revision number):
+every "helm upgrade" runs migrations once, and Helm deletes the previous
+revision's Job because it is no longer in the rendered manifest.
+No Helm hooks: web pods wait for migrations in their init container, so the
+order in which Kubernetes creates the objects does not matter (and
+"helm upgrade --install --wait" cannot deadlock on the first install).
+*/}}
+{{- $jobs := list (dict "name" "migrate" "args" (list "migrate")) }}
+{{- if .Values.jobs.bootstrapAdmin }}
+{{- $jobs = append $jobs (dict "name" "bootstrap-admin" "args" (list "bootstrap_admin" "--password-env" "ADMIN_PASSWORD")) }}
+{{- end }}
+{{- range $job := $jobs }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "epiconnect.fullname" $ }}-{{ $job.name }}-{{ $.Release.Revision }}
+  labels:
+    app.kubernetes.io/name: epiconnect
+    app.kubernetes.io/component: {{ $job.name }}
+    {{- include "epiconnect.labels" $ | nindent 4 }}
+spec:
+  backoffLimit: 6
+  activeDeadlineSeconds: 600
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: epiconnect
+        app.kubernetes.io/component: {{ $job.name }}
+        epiconnect.io/db-client: "true"
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ include "epiconnect.fullname" $ }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "epiconnect.podSecurityContext" (dict "uid" 10001 "fsGroup" false) | nindent 8 }}
+      containers:
+        - name: {{ $job.name }}
+          image: {{ include "epiconnect.image" $ }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          args: {{ toJson $job.args }}
+          envFrom:
+            {{- include "epiconnect.appEnvFrom" $ | nindent 12 }}
+          env:
+            {{- include "epiconnect.appSecretEnv" $ | nindent 12 }}
+            {{- if eq $job.name "bootstrap-admin" }}
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: {{ $.Values.existingSecret }}, key: admin-password}
+            {{- end }}
+          resources:
+            {{- toYaml $.Values.jobs.resources | nindent 12 }}
+          securityContext:
+            {{- include "epiconnect.containerSecurityContext" $ | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+{{- end }}

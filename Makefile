@@ -11,6 +11,7 @@ PS       := powershell.exe -NoProfile -ExecutionPolicy Bypass -File
 LABVM    = $(PS) "$$(wslpath -w $(HYPERV)/Invoke-LabVM.ps1)"
 NODE     ?=
 TAGS     ?=
+ARGS     ?=
 export KUBECONFIG ?= $(HOME)/.kube/epiconnect-lab.yaml
 SNAPSHOT ?= fresh
 node_arg  = $(if $(NODE),-Node $(NODE),)
@@ -95,6 +96,20 @@ deploy-manifests: ## Deploy EPIConnect from kubernetes/ in dependency order (wai
 verify: ## Milestone 4 checks: DB, migrations, ingress, probes, replicas, RWX, NetworkPolicy, security
 	scripts/verify-app.sh
 
+##@ Application (Helm)
+helm-check: ## helm lint + render the chart and validate it against the API server (changes nothing)
+	helm lint helm/epiconnect --strict
+	helm template epiconnect helm/epiconnect --namespace epiconnect | kubectl apply --dry-run=server --namespace epiconnect -f -
+
+helm-diff: ## What the chart would change on the live cluster (kubectl diff)
+	helm template epiconnect helm/epiconnect --namespace epiconnect | kubectl diff --namespace epiconnect -f - || true
+
+deploy-helm: ## Install/upgrade the release (adopts a raw-manifest deployment first). ARGS="--set image.tag=..."
+	scripts/deploy-helm.sh $(ARGS)
+
+helm-history: ## Release revisions (for helm rollback)
+	helm --namespace epiconnect history epiconnect
+
 app-status: ## Everything in the epiconnect namespace
 	kubectl -n epiconnect get all,pvc,ingress,networkpolicy -o wide
 
@@ -113,4 +128,4 @@ forget-hosts: ## Remove lab host keys from known_hosts (after recreating VMs)
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"} /^##@/ {printf "\n%s\n", substr($$0, 5)} /^[a-z-]+:.*##/ {printf "  %-14s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-.PHONY: vault-init provision provision-check lint nodes secrets tls trust-ca deploy-manifests verify app-status bootstrap host-init image vms status start stop poweroff checkpoint restore destroy-vms ping forget-hosts help
+.PHONY: helm-check helm-diff deploy-helm helm-history vault-init provision provision-check lint nodes secrets tls trust-ca deploy-manifests verify app-status bootstrap host-init image vms status start stop poweroff checkpoint restore destroy-vms ping forget-hosts help

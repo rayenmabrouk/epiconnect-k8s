@@ -1,0 +1,96 @@
+{{- if .Values.networkPolicy.enabled }}
+# Default deny in both directions, then only: DNS, ingress controller -> web,
+# labelled database clients -> PostgreSQL. (See kubernetes/network-policy.yaml.)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  labels:
+    {{- include "epiconnect.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  labels:
+    {{- include "epiconnect.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: web-from-ingress
+  labels:
+    {{- include "epiconnect.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "epiconnect.webSelector" . | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.ingress.controllerNamespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .Values.ingress.controllerPodLabels | nindent 14 }}
+      ports:
+        - {protocol: TCP, port: 8000}
+{{- if .Values.postgres.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-from-db-clients
+  labels:
+    {{- include "epiconnect.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              epiconnect.io/db-client: "true"
+      ports:
+        - {protocol: TCP, port: 5432}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-clients-to-postgres
+  labels:
+    {{- include "epiconnect.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      epiconnect.io/db-client: "true"
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgres
+      ports:
+        - {protocol: TCP, port: 5432}
+{{- end }}
+{{- end }}

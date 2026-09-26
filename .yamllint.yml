@@ -11,3 +11,4 @@ ignore: |
   app/
   ansible/inventory/group_vars/all/vault.yml
   infra/hyperv/cloud-init/
+  helm/epiconnect/templates/

@@ -1,0 +1,12 @@
+EPIConnect {{ include "epiconnect.image" . }} - release "{{ .Release.Name }}", revision {{ .Release.Revision }}
+
+  kubectl -n {{ .Release.Namespace }} get pods,jobs -o wide
+  kubectl -n {{ .Release.Namespace }} rollout status deployment/{{ include "epiconnect.fullname" . }}
+{{- if .Values.ingress.enabled }}
+
+Open https://{{ .Values.ingress.host }}  (end-to-end checks: make verify)
+{{- end }}
+
+History and rollback:
+  helm -n {{ .Release.Namespace }} history {{ .Release.Name }}
+  helm -n {{ .Release.Namespace }} rollback {{ .Release.Name }} <revision>

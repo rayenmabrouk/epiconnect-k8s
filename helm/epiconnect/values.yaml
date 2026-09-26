@@ -1,0 +1,81 @@
+---
+# Everything that differs between environments or releases lives here.
+# Override per install:  helm upgrade --install epiconnect ./helm/epiconnect --set image.tag=<commit>
+
+image:
+  repository: ghcr.io/rayenmabrouk/epiconnect
+  tag: ""                      # empty = Chart.appVersion (the pinned EPIConnect commit)
+  pullPolicy: IfNotPresent
+
+replicaCount: 3
+
+# Secret created outside the chart (make secrets). The chart only references it:
+# secret VALUES never pass through Helm, values files or the release history.
+existingSecret: epiconnect-secrets
+
+# Non-secret settings -> ConfigMap -> environment variables of every app pod
+config:
+  DEBUG: "false"
+  ALLOWED_HOSTS: "epiconnect.lab"
+  CSRF_TRUSTED_ORIGINS: "https://epiconnect.lab"
+  SECURE_PROXY_SSL_HEADER: "HTTP_X_FORWARDED_PROTO"
+  SECURE_SSL_REDIRECT: "true"
+  SECURE_HSTS_SECONDS: "0"
+  TRUSTED_PROXY_COUNT: "1"
+  SERVE_MEDIA: "true"
+  DB_HOST: "postgres"
+  DB_PORT: "5432"
+  DB_NAME: "epiconnect"
+  DB_USER: "epiconnect"
+  DB_SSLMODE: "disable"
+  GUNICORN_WORKERS: "2"
+  GUNICORN_THREADS: "4"
+  LOG_JSON: "true"
+  LOG_LEVEL: "INFO"
+
+web:
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: "1", memory: 512Mi}
+  nodeSelector:
+    epiconnect.io/pool: app
+  # How long pods stay bound to an unreachable/not-ready node before eviction
+  nodeFailureTolerationSeconds: 30
+
+jobs:
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 256Mi}
+  bootstrapAdmin: true         # create the "admin" superuser (idempotent)
+
+ingress:
+  enabled: true
+  className: traefik
+  host: epiconnect.lab
+  tlsSecret: epiconnect-tls
+  # Who is allowed to reach the web pods (NetworkPolicy)
+  controllerNamespace: kube-system
+  controllerPodLabels:
+    app.kubernetes.io/name: traefik
+
+media:                         # uploads: NFS share, ReadWriteMany
+  size: 5Gi
+  nfs:
+    server: 192.168.50.10
+    path: /srv/nfs/epiconnect-media
+
+postgres:
+  enabled: true                # false = use an external database (set config.DB_HOST)
+  image: postgres:17-alpine
+  # Immutable after the first install (StatefulSet volumeClaimTemplates)
+  storage:
+    size: 2Gi
+    storageClass: local-path
+  nodeSelector:
+    epiconnect.io/pool: data
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: "1", memory: 512Mi}
+
+networkPolicy:
+  enabled: true
