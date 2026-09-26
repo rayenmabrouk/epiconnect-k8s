@@ -139,18 +139,26 @@ c_shared_uploads() {
 
 # A throw-away pod tries to open a TCP connection to PostgreSQL. Without the
 # db-client label the NetworkPolicy must drop it; with the label it must work.
+# The pod is created, waited for, and its log read afterwards: attaching to a
+# pod this short-lived ("kubectl run -i") can miss its output entirely.
 netpol_probe() {
-  local label="$1"
-  kubectl -n ${ns} run "netpol-probe-${nonce}-${label}" --rm -i --quiet --restart=Never \
+  local label="$1" pod="netpol-probe-${nonce}-$1"
+  # shellcheck disable=SC2016  # the JSON is literal; the shell inside the pod expands nothing here
+  kubectl -n ${ns} run "${pod}" --restart=Never \
     --image=busybox:1.37 --labels="epiconnect.io/db-client=${label}" --overrides='{
       "spec": {
         "automountServiceAccountToken": false,
         "securityContext": {"runAsNonRoot": true, "runAsUser": 65534, "seccompProfile": {"type": "RuntimeDefault"}},
         "containers": [{
           "name": "probe", "image": "busybox:1.37",
-          "command": ["sh", "-c", "nc -w 3 postgres 5432 </dev/null && echo REACHABLE || echo BLOCKED"],
+          "command": ["sh", "-c", "if nslookup postgres >/dev/null 2>&1; then echo dns=ok; else echo dns=FAILED; fi; nc -w 3 postgres 5432 </dev/null && echo REACHABLE || echo BLOCKED"],
           "securityContext": {"allowPrivilegeEscalation": false, "capabilities": {"drop": ["ALL"]}}
-        }]}}' 2>/dev/null | tail -1
+        }]}}' >/dev/null
+  # The first run pulls busybox, so allow time for the image download
+  kubectl -n ${ns} wait --for=jsonpath='{.status.phase}'=Succeeded "pod/${pod}" --timeout=120s >/dev/null 2>&1 \
+    || echo "probe pod did not complete: phase=$(kubectl -n ${ns} get pod "${pod}" -o jsonpath='{.status.phase}')" >&2
+  kubectl -n ${ns} logs "${pod}" 2>&1 | tr '\n' ' '
+  kubectl -n ${ns} delete pod "${pod}" --wait=false >/dev/null 2>&1
 }
 
 c_network_policy() {
@@ -159,7 +167,7 @@ c_network_policy() {
   with="$(netpol_probe true)"
   echo "pod WITHOUT db-client label -> postgres:5432: ${without}"
   echo "pod WITH    db-client label -> postgres:5432: ${with}"
-  [[ "${without}" == "BLOCKED" && "${with}" == "REACHABLE" ]]
+  [[ "${without}" == *BLOCKED* && "${with}" == *REACHABLE* ]]
 }
 
 c_security() {
@@ -192,4 +200,6 @@ check "Security: non-root, read-only root filesystem, restricted Pod Security" c
 { echo "---"; echo "**${passed} passed, ${failed} failed**"; } >> "${report}"
 echo
 echo "${passed} passed, ${failed} failed - report: ${report}"
+# Optional copy for review outside WSL (export OUTBOX=/mnt/c/...)
+if [[ -n "${OUTBOX:-}" && -d "${OUTBOX}" ]]; then cp "${report}" "${OUTBOX}/app-verification-report.md"; fi
 [[ ${failed} -eq 0 ]]
