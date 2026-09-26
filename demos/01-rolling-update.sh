@@ -66,7 +66,18 @@ sleep 5                                    # baseline: traffic before the change
 start=$(date +%s)
 scripts/deploy-helm.sh --set image.tag="${new_tag}" 2>&1 | tee "${out}/upgrade.log"
 duration=$(( $(date +%s) - start ))
-sleep 10                                   # traffic after the change
+# helm --wait returns when the new pods are Ready; the old ones are still
+# draining (preStop sleep, then graceful shutdown). Their termination is the
+# riskiest moment for in-flight requests, so keep measuring until they are gone.
+web_images() {
+  kubectl -n ${ns} get pods -l app.kubernetes.io/component=web \
+    -o jsonpath='{range .items[*]}{.spec.containers[0].image}{"\n"}{end}'
+}
+for _ in $(seq 1 60); do
+  [[ "$(web_images)" == *":${old_tag}"* ]] || break
+  sleep 2
+done
+sleep 5                                    # traffic after the last old pod is gone
 kill "${client}" "${observer}" 2>/dev/null || true
 wait 2>/dev/null || true
 
@@ -75,7 +86,7 @@ ok=$(awk '$2 == "200"' "${out}/requests.log" | wc -l)
 failed=$(( total - ok ))
 images="$(kubectl -n ${ns} get pods -l app.kubernetes.io/component=web -o jsonpath='{range .items[*]}{.spec.containers[0].image}{"\n"}{end}' | sort | uniq -c)"
 ready="$(kubectl -n ${ns} get deploy epiconnect -o jsonpath='{.status.readyReplicas}/{.spec.replicas}')"
-on_new=$(grep -c ":${new_tag}$" <<<"$(kubectl -n ${ns} get pods -l app.kubernetes.io/component=web -o jsonpath='{range .items[*]}{.spec.containers[0].image}{"\n"}{end}')" || true)
+on_new=$(web_images | grep -c ":${new_tag}$" || true)
 
 {
   echo "# Demo 1 - Rolling update without downtime"
@@ -88,7 +99,7 @@ on_new=$(grep -c ":${new_tag}$" <<<"$(kubectl -n ${ns} get pods -l app.kubernete
   echo
   echo "## Client view"
   echo
-  echo "One HTTPS request every 0.2 s through Traefik, from 5 s before to 10 s after the upgrade:"
+  echo "One HTTPS request every 0.2 s through Traefik, from 5 s before the upgrade until 5 s after the last old pod had terminated:"
   echo
   echo "- Requests: ${total}"
   echo "- HTTP 200: ${ok}"
@@ -108,6 +119,8 @@ on_new=$(grep -c ":${new_tag}$" <<<"$(kubectl -n ${ns} get pods -l app.kubernete
   echo "Ready: ${ready}"
   helm -n ${ns} history epiconnect --max 3
   echo '```'
+  echo
+  echo "(APP VERSION in the history is the chart's default appVersion; the image actually deployed is the image.tag value: helm -n ${ns} get values epiconnect)"
   echo
   if [[ ${failed} -eq 0 && "${on_new}" -ge 1 && "${ready%/*}" == "${ready#*/}" && "${images}" != *":${old_tag}"* ]]; then
     echo "**Result: PASS** - every web pod runs ${new_tag}, and none of the ${total} requests failed during the update."
