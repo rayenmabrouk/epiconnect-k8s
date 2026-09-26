@@ -1,7 +1,7 @@
 # Application verification
 
-- Date (UTC): 2026-09-26 21:57
-- Commit: `5ae6c04`
+- Date (UTC): 2026-09-26 22:14
+- Commit: `007ae14`
 - Image: `ghcr.io/rayenmabrouk/epiconnect:0b3cd06`
 
 ## PASS - 3 nodes Ready
@@ -15,7 +15,7 @@ k3s-worker2   Ready    <none>          12h   v1.36.4+k3s1   192.168.50.12   <non
 ## PASS - PostgreSQL ready on k3s-server with its own volume
 ```
 NAME         READY   STATUS    RESTARTS       AGE   IP           NODE         NOMINATED NODE   READINESS GATES
-postgres-0   1/1     Running   1 (137m ago)   10h   10.42.0.14   k3s-server   <none>           <none>
+postgres-0   1/1     Running   1 (154m ago)   10h   10.42.0.14   k3s-server   <none>           <none>
 NAME              STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE
 data-postgres-0   Bound    pvc-217c3776-0db2-4787-8a73-9b7109e4be59   2Gi        RWO            local-path     <unset>                 10h
 ```
@@ -23,7 +23,7 @@ data-postgres-0   Bound    pvc-217c3776-0db2-4787-8a73-9b7109e4be59   2Gi       
 ## PASS - Migrations applied (Job succeeded, none pending)
 ```
 NAME                   STATUS     COMPLETIONS   DURATION   AGE
-epiconnect-migrate-1   Complete   1/1           8s         50s
+epiconnect-migrate-1   Complete   1/1           8s         17m
 unapplied migrations: 0
 ```
 
@@ -67,15 +67,15 @@ Location: https://epiconnect.lab/
 ## PASS - Requests are load-balanced across replicas
 ```
 epiconnect-758bb8989b-2llqv (k3s-worker2): 9 of 30 requests
-epiconnect-758bb8989b-f6gmk (k3s-worker2): 11 of 30 requests
-epiconnect-758bb8989b-mfdn2 (k3s-worker1): 10 of 30 requests
+epiconnect-758bb8989b-f6gmk (k3s-worker2): 10 of 30 requests
+epiconnect-758bb8989b-mfdn2 (k3s-worker1): 11 of 30 requests
 ```
 
 ## PASS - Uploads volume shared across nodes (ReadWriteMany)
 ```
 write on epiconnect-758bb8989b-mfdn2 (k3s-worker1), read on epiconnect-758bb8989b-f6gmk (k3s-worker2)
--rw-r--r-- 1 10001 10001 11 Sep 26 21:57 /app/media/rwx-check-1790459823
-content read back: 1790459823
+-rw-r--r-- 1 10001 10001 11 Sep 26 22:14 /app/media/rwx-check-1790460851
+content read back: 1790460851
 ```
 
 ## PASS - NetworkPolicy: only labelled database clients reach PostgreSQL

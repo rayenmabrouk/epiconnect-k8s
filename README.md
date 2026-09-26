@@ -22,7 +22,7 @@ Linux hosts, configuration management, container orchestration, cluster networki
 | 3 | Raw Kubernetes manifests | done |
 | 4 | Application verification | done ([12/12 checks](evidence/04-app-verification/report.md)) |
 | 5 | Helm chart | done ([12/12 checks under Helm](evidence/04-app-verification/report.md)) |
-| 6 | GitHub Actions CI + GHCR | in progress |
+| 6 | GitHub Actions CI + GHCR | done ([runs](https://github.com/rayenmabrouk/epiconnect-k8s/actions/workflows/ci.yml)) |
 | 7 | Failure demonstrations with evidence | |
 | 8 | Final documentation | |
 
