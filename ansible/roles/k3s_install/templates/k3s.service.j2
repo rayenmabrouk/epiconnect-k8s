@@ -1,0 +1,27 @@
+# Managed by Ansible (role: k3s_install). Based on the unit k3s's own installer writes.
+[Unit]
+Description=Lightweight Kubernetes ({{ k3s_mode }})
+Documentation=https://docs.k3s.io
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+# notify: systemd waits until k3s reports it is ready before the unit counts as "started"
+Type={{ 'notify' if k3s_mode == 'server' else 'exec' }}
+EnvironmentFile=-/etc/default/%N
+# Containers are children of containerd; stopping k3s must not kill running pods
+KillMode=process
+Delegate=yes
+LimitNOFILE=1048576
+LimitNPROC=infinity
+LimitCORE=infinity
+TasksMax=infinity
+TimeoutStartSec=0
+Restart=always
+RestartSec=5s
+ExecStartPre=-/sbin/modprobe br_netfilter
+ExecStartPre=-/sbin/modprobe overlay
+ExecStart=/usr/local/bin/k3s {{ k3s_mode }}
+
+[Install]
+WantedBy=multi-user.target

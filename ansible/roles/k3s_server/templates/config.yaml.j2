@@ -1,0 +1,36 @@
+# Managed by Ansible (role: k3s_server). Read by "k3s server" at start.
+# Every value here is also a command-line flag (--node-ip, --tls-san, ...).
+
+# Addressing: always use the lab network, never guess from interfaces
+node-ip: {{ ansible_host }}
+advertise-address: {{ ansible_host }}
+flannel-iface: {{ k3s_flannel_iface }}
+cluster-cidr: {{ k3s_cluster_cidr }}
+service-cidr: {{ k3s_service_cidr }}
+
+# The API server certificate must be valid for the names clients use
+tls-san:
+  - {{ ansible_host }}
+  - {{ inventory_hostname }}
+
+# Shared secret agents present to join (from the Ansible vault)
+token: "{{ k3s_token }}"
+
+# Admin kubeconfig readable by root only
+write-kubeconfig-mode: "0600"
+
+# Encrypt Secret objects at rest in the datastore (AES-CBC key managed by k3s)
+secrets-encryption: true
+
+node-label:
+  - "epiconnect.io/pool={{ k3s_node_pool }}"
+{% if k3s_kubelet_args %}
+kubelet-arg:
+{% for arg in k3s_kubelet_args %}
+  - "{{ arg }}"
+{% endfor %}
+{% endif %}
+{% if k3s_extra_config %}
+
+# Extra settings for this environment (k3s_extra_config)
+{{ k3s_extra_config | to_nice_yaml(indent=2) }}{% endif %}

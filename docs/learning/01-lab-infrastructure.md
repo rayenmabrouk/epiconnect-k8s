@@ -40,7 +40,7 @@ internally, commands, what can go wrong, troubleshooting, interview question, an
 2. **Why:** a reproducible, pre-installed OS in seconds instead of three manual installs.
 3. **Problem solved:** cloud images ship with no users and no network configuration; cloud-init supplies them for each machine.
 4. **How it works:** at boot, cloud-init looks for a *datasource*. The **NoCloud** datasource is a disk labelled `cidata` holding three files: `meta-data` (instance-id, hostname), `user-data` (users, keys), `network-config` (netplan v2). cloud-init runs in stages (local: network config before the network comes up; then config and final). It remembers the `instance-id`, so "once per instance" steps do not repeat on reboot. The NIC is matched by its MAC address (set statically in Hyper-V), so the IP plan does not depend on interface naming.
-5. **Commands:** `cloud-init status --long`, `sudo cat /var/log/cloud-init-output.log`, `sudo cloud-init schema --system`, `cat /etc/netplan/50-cloud-init.yaml`; image verification in `prepare-image.sh` (`gpgv`, `sha256sum --check`).
+5. **Commands:** `cloud-init status --long`, `sudo cat /var/log/cloud-init-output.log`, `sudo cloud-init schema --system`, `sudo cat /etc/netplan/50-cloud-init.yaml` (root-only: netplan files can hold Wi-Fi secrets); image verification in `prepare-image.sh` (`gpgv`, `sha256sum --check`).
 6. **What can go wrong:** YAML error in user-data (cloud-init ignores it: no user, no key); MAC mismatch (no static IP); `status: error`.
 7. **Troubleshoot:** log in on the Hyper-V console with the break-glass password (`~/.config/epiconnect-k8s/console-password`, user `ansible`), then `cloud-init status --long` and `/var/log/cloud-init.log`.
 8. **Interview:** "What does cloud-init do, and why not configure everything with it?"
@@ -78,7 +78,7 @@ make status
 make ping
 ssh k3s-server 'ip -br addr; ip route; resolvectl status | head -20'
 ssh k3s-worker1 'cloud-init status --long; sudo head -30 /var/log/cloud-init-output.log'
-ssh k3s-server 'cat /etc/netplan/50-cloud-init.yaml'
+ssh k3s-server 'sudo cat /etc/netplan/50-cloud-init.yaml'   # root-only file (mode 600)
 ssh -v k3s-worker2 true 2>&1 | grep -E "Authenticating|Offering|Server accepts|Authenticated"
 ```
 

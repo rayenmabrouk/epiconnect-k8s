@@ -1,0 +1,44 @@
+---
+- name: K3s control plane
+  hosts: k3s_servers
+  become: true
+  tags: [k3s]
+  roles:
+    - k3s_server
+
+# serial: 1 -> workers join one at a time, so a bad change stops at the first node
+- name: K3s workers join the cluster
+  hosts: k3s_agents
+  become: true
+  serial: 1
+  tags: [k3s]
+  roles:
+    - k3s_agent
+
+- name: Kubeconfig for the control machine (WSL)
+  hosts: k3s_servers
+  become: true
+  tags: [k3s, kubeconfig]
+  tasks:
+    - name: Read the admin kubeconfig k3s generated
+      ansible.builtin.slurp:
+        src: /etc/rancher/k3s/k3s.yaml
+      register: k3s_kubeconfig
+
+    - name: Local ~/.kube directory
+      ansible.builtin.file:
+        path: "{{ kubeconfig_local_path | dirname }}"
+        state: directory
+        mode: "0700"
+      delegate_to: localhost
+      become: false
+
+    # k3s writes https://127.0.0.1:6443 (valid on the server itself only);
+    # the control machine reaches the API server at the node's lab IP.
+    - name: Write it locally, pointing at the server's lab IP
+      ansible.builtin.copy:
+        content: "{{ k3s_kubeconfig.content | b64decode | replace('https://127.0.0.1:6443', 'https://' ~ ansible_host ~ ':6443') }}"
+        dest: "{{ kubeconfig_local_path }}"
+        mode: "0600"
+      delegate_to: localhost
+      become: false

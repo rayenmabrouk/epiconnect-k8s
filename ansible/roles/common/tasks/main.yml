@@ -1,0 +1,63 @@
+---
+- name: Only Ubuntu 24.04 is supported
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['distribution'] == 'Ubuntu'
+      - ansible_facts['distribution_version'] == '24.04'
+    fail_msg: "Unsupported OS: {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}"
+    quiet: true
+
+- name: Set the hostname
+  ansible.builtin.hostname:
+    name: "{{ inventory_hostname }}"
+
+- name: Every node can resolve every other node by name
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} k3s lab nodes (managed by Ansible)"
+    block: |
+      {% for host in groups['k3s_cluster'] %}
+      {{ hostvars[host]['ansible_host'] }} {{ host }}
+      {% endfor %}
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name: "{{ common_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Set the timezone (logs from every node line up)
+  community.general.timezone:
+    name: "{{ common_timezone }}"
+
+- name: Swap must be off (the kubelet expects it)
+  ansible.builtin.assert:
+    that: ansible_facts['swaptotal_mb'] | int == 0
+    fail_msg: "Swap is enabled on {{ inventory_hostname }}; the cloud image should have none"
+    quiet: true
+
+- name: Load kernel modules at every boot
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/k8s.conf
+    content: |
+      # Managed by Ansible (role: common)
+      {{ common_kernel_modules | join('\n') }}
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Load kernel modules now
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ common_kernel_modules }}"
+  when: common_load_kernel_modules | bool
+
+- name: Kernel parameters for Kubernetes networking
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/90-kubernetes.conf
+    reload: true
+  loop: "{{ common_sysctl | dict2items }}"

@@ -1,0 +1,7 @@
+---
+# The kubelet mounts NFS volumes on the node where a pod runs, using the
+# node's own NFS client: every node that may run such a pod needs it.
+- name: Install the NFS client
+  ansible.builtin.apt:
+    name: nfs-common
+    state: present

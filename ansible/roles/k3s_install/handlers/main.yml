@@ -1,0 +1,8 @@
+---
+# Notified by k3s_install, k3s_server and k3s_agent; k3s_service_name comes from
+# group_vars (k3s on the server, k3s-agent on workers).
+- name: Restart k3s
+  ansible.builtin.systemd_service:
+    name: "{{ k3s_service_name }}"
+    state: restarted
+    daemon_reload: true

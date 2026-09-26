@@ -1,0 +1,40 @@
+---
+# Installing k3s = one static binary + one systemd unit. Instead of the "curl | sh" installer,
+# Ansible downloads the pinned release and verifies it against the checksum
+# file published with it. get_url skips the download when the file on disk
+# already has that checksum: this is what makes a re-run report "ok".
+# Changing k3s_version in group_vars downloads the new binary and restarts
+# the service: that is an upgrade.
+- name: Download the k3s binary (pinned, checksum-verified)
+  ansible.builtin.get_url:
+    url: "{{ k3s_install_release_url }}/k3s"
+    checksum: "sha256:{{ k3s_install_release_url }}/sha256sum-amd64.txt"
+    dest: /usr/local/bin/k3s
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart k3s
+
+- name: Symlinks - kubectl, crictl and ctr are the same binary under another name
+  ansible.builtin.file:
+    src: /usr/local/bin/k3s
+    dest: "/usr/local/bin/{{ item }}"
+    state: link
+  loop: [kubectl, crictl, ctr]
+
+- name: Configuration directory /etc/rancher/k3s
+  ansible.builtin.file:
+    path: /etc/rancher/k3s
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Systemd unit for {{ k3s_service_name }}
+  ansible.builtin.template:
+    src: k3s.service.j2
+    dest: "/etc/systemd/system/{{ k3s_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart k3s

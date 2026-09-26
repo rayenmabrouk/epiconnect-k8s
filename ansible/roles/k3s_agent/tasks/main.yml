@@ -1,0 +1,28 @@
+---
+- name: Agent configuration (/etc/rancher/k3s/config.yaml)
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: /etc/rancher/k3s/config.yaml
+    owner: root
+    group: root
+    mode: "0600"            # contains the join token
+  notify: Restart k3s
+
+- name: Apply configuration changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Agent service running and enabled at boot
+  ansible.builtin.systemd_service:
+    name: k3s-agent
+    state: started
+    enabled: true
+
+# Asked on the server: the agent has joined when the control plane sees it Ready
+- name: Wait for this node to join and be Ready
+  ansible.builtin.command: k3s kubectl wait --for=condition=Ready node/{{ inventory_hostname }} --timeout=300s
+  delegate_to: "{{ groups['k3s_servers'][0] }}"
+  register: k3s_agent_join
+  until: k3s_agent_join.rc == 0
+  retries: 10
+  delay: 10
+  changed_when: false

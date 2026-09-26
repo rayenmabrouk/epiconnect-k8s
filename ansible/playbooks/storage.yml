@@ -1,0 +1,14 @@
+---
+- name: NFS client on every node (the kubelet mounts NFS volumes)
+  hosts: k3s_cluster
+  become: true
+  tags: [storage]
+  roles:
+    - nfs_client
+
+- name: NFS share for EPIConnect uploads
+  hosts: nfs_servers
+  become: true
+  tags: [storage]
+  roles:
+    - nfs_server

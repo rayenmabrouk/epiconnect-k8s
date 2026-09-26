@@ -1,0 +1,7 @@
+---
+# Collections used by the roles (installed by scripts/bootstrap-wsl.sh)
+collections:
+  - name: ansible.posix        # sysctl, authorized_key
+    version: "2.2.2"
+  - name: community.general    # ufw, modprobe, timezone
+    version: "13.4.0"

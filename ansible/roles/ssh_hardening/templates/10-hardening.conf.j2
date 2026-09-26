@@ -1,0 +1,24 @@
+# Managed by Ansible (role: ssh_hardening). Do not edit on the host.
+# sshd keeps the FIRST value it reads for each option, and files in
+# sshd_config.d are read in name order, so "10-" wins over the cloud image's
+# 50-cloud-init.conf and 60-cloudimg-settings.conf.
+
+# Keys only: no passwords, no keyboard-interactive, no root.
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+AuthenticationMethods publickey
+AllowGroups {{ ssh_allowed_group }}
+
+# Slow down brute force and drop idle/abandoned sessions.
+MaxAuthTries {{ ssh_hardening_max_auth_tries }}
+LoginGraceTime {{ ssh_hardening_login_grace_time }}
+ClientAliveInterval {{ ssh_hardening_client_alive_interval }}
+ClientAliveCountMax 2
+
+# Nodes are not jump hosts or desktops.
+X11Forwarding no
+AllowAgentForwarding no
+AllowTcpForwarding no
+PermitTunnel no

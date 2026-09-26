@@ -1,0 +1,6 @@
+# Shape of ansible/inventory/group_vars/all/vault.yml, which is ENCRYPTED (ansible-vault).
+# Create the real one with:  make vault-init
+# The "vault_" prefix marks values that come from the vault; main.yml maps them
+# to the names roles use, so every secret is traceable to exactly one place.
+vault_k3s_token: "<64 hex chars, generated>"
+vault_admin_password_hash: "<SHA-512 crypt hash of your admin password>"

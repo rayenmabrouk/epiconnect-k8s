@@ -1,0 +1,13 @@
+---
+# Default policy: deny inbound, allow outbound. Everything below is an explicit
+# exception, scoped to the lab subnet (never "from anywhere").
+firewall_rules_all_nodes:
+  - {port: "22", proto: tcp, comment: "SSH (Ansible, admin)"}
+  - {port: "10250", proto: tcp, comment: "kubelet API (logs, exec, metrics)"}
+  - {port: "8472", proto: udp, comment: "flannel VXLAN (pod-to-pod across nodes)"}
+  - {port: "80", proto: tcp, comment: "Ingress HTTP (Traefik via ServiceLB)"}
+  - {port: "443", proto: tcp, comment: "Ingress HTTPS (Traefik via ServiceLB)"}
+firewall_rules_server:
+  - {port: "6443", proto: tcp, comment: "Kubernetes API server"}
+firewall_rules_nfs_server:
+  - {port: "2049", proto: tcp, comment: "NFSv4 (uploaded files share)"}

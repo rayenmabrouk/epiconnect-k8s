@@ -1,0 +1,16 @@
+---
+- name: The automation account must be allowed in before AllowGroups is applied
+  ansible.builtin.command: id -nG {{ automation_user }}
+  register: ssh_hardening_automation_groups
+  changed_when: false
+  failed_when: ssh_allowed_group not in ssh_hardening_automation_groups.stdout.split()
+
+- name: SSH daemon hardening drop-in
+  ansible.builtin.template:
+    src: 10-hardening.conf.j2
+    dest: /etc/ssh/sshd_config.d/10-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: /usr/sbin/sshd -t -f %s
+  notify: Validate and reload sshd

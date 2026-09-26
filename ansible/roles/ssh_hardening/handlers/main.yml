@@ -1,0 +1,14 @@
+---
+# Both handlers listen to the same topic and run in the order written:
+# the complete configuration (main file + all drop-ins) is tested first, and if
+# that fails the play stops before a broken config could replace a working one.
+- name: Test full sshd configuration
+  ansible.builtin.command: /usr/sbin/sshd -t
+  changed_when: false
+  listen: Validate and reload sshd
+
+- name: Reload sshd (existing sessions stay open)
+  ansible.builtin.service:
+    name: ssh
+    state: reloaded
+  listen: Validate and reload sshd

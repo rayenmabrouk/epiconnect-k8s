@@ -10,6 +10,8 @@ HYPERV   := infra/hyperv
 PS       := powershell.exe -NoProfile -ExecutionPolicy Bypass -File
 LABVM    = $(PS) "$$(wslpath -w $(HYPERV)/Invoke-LabVM.ps1)"
 NODE     ?=
+TAGS     ?=
+export KUBECONFIG ?= $(HOME)/.kube/epiconnect-lab.yaml
 SNAPSHOT ?= fresh
 node_arg  = $(if $(NODE),-Node $(NODE),)
 
@@ -55,6 +57,25 @@ restore: ## Roll every VM back to SNAPSHOT (default: fresh)
 destroy-vms: ## Delete the VMs and their disks (asks first)
 	$(PS) "$$(wslpath -w $(HYPERV)/Remove-Lab.ps1)"
 
+##@ Configuration (Ansible)
+vault-init: ## Create the encrypted vault (k3s join token, your admin password hash) - once
+	scripts/vault-init.sh
+
+provision: ## Configure every node and build the cluster (TAGS=base|storage|k3s for one layer)
+	cd ansible && ansible-playbook playbooks/site.yml $(if $(TAGS),--tags $(TAGS),)
+
+provision-check: ## Dry run: show what would change, change nothing (--check --diff)
+	cd ansible && ansible-playbook playbooks/site.yml --check --diff $(if $(TAGS),--tags $(TAGS),)
+
+lint: ## yamllint + ansible-lint (production profile) + shellcheck
+	yamllint -c .yamllint.yml .
+	cd ansible && ansible-lint
+	shellcheck scripts/*.sh demos/*.sh infra/hyperv/*.sh
+
+##@ Cluster
+nodes: ## Nodes with their IPs, roles and versions
+	kubectl get nodes -o wide -L epiconnect.io/pool
+
 ##@ Connectivity
 ping: ## SSH to every node: hostname, IP, uptime, cloud-init status
 	@for n in $(NODES); do \
@@ -70,4 +91,4 @@ forget-hosts: ## Remove lab host keys from known_hosts (after recreating VMs)
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"} /^##@/ {printf "\n%s\n", substr($$0, 5)} /^[a-z-]+:.*##/ {printf "  %-14s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-.PHONY: bootstrap host-init image vms status start stop poweroff checkpoint restore destroy-vms ping forget-hosts help
+.PHONY: vault-init provision provision-check lint nodes bootstrap host-init image vms status start stop poweroff checkpoint restore destroy-vms ping forget-hosts help

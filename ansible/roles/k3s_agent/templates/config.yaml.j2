@@ -1,0 +1,21 @@
+# Managed by Ansible (role: k3s_agent). Read by "k3s agent" at start.
+
+# Where to join, and the shared secret proving this node may join
+server: https://{{ k3s_server_ip }}:6443
+token: "{{ k3s_token }}"
+
+node-ip: {{ ansible_host }}
+flannel-iface: {{ k3s_flannel_iface }}
+
+node-label:
+  - "epiconnect.io/pool={{ k3s_node_pool }}"
+{% if k3s_kubelet_args %}
+kubelet-arg:
+{% for arg in k3s_kubelet_args %}
+  - "{{ arg }}"
+{% endfor %}
+{% endif %}
+{% if k3s_extra_config %}
+
+# Extra settings for this environment (k3s_extra_config)
+{{ k3s_extra_config | to_nice_yaml(indent=2) }}{% endif %}

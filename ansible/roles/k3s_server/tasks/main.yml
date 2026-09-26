@@ -1,0 +1,36 @@
+---
+- name: Server configuration (/etc/rancher/k3s/config.yaml)
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: /etc/rancher/k3s/config.yaml
+    owner: root
+    group: root
+    mode: "0600"            # contains the join token
+  notify: Restart k3s
+
+# Apply pending restarts now, so the checks below see the new configuration
+- name: Apply configuration changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Server service running and enabled at boot
+  ansible.builtin.systemd_service:
+    name: k3s
+    state: started
+    enabled: true
+
+- name: Wait for the API server to be ready
+  ansible.builtin.command: k3s kubectl get --raw /readyz
+  register: k3s_server_readyz
+  until: k3s_server_readyz.rc == 0
+  retries: 30
+  delay: 5
+  changed_when: false
+
+# Retried: for the first seconds the node object does not exist yet
+- name: Wait for this node to be Ready
+  ansible.builtin.command: k3s kubectl wait --for=condition=Ready node/{{ inventory_hostname }} --timeout=60s
+  register: k3s_server_node_ready
+  until: k3s_server_node_ready.rc == 0
+  retries: 10
+  delay: 5
+  changed_when: false

@@ -1,0 +1,31 @@
+---
+# ---- Lab network (must match infra/lab.json) -----------------------------
+lab_subnet: 192.168.50.0/24
+
+# ---- People and access ----------------------------------------------------
+# "ansible": automation account created by cloud-init, passwordless sudo, key only.
+# admin_user: the human operator account, sudo WITH a password (from the vault).
+automation_user: ansible
+automation_ssh_public_key: "{{ lookup('ansible.builtin.file', '~/.ssh/k3s_lab_ed25519.pub') }}"
+admin_user: rayen
+admin_ssh_public_key: "{{ lookup('ansible.builtin.file', '~/.ssh/k3s_lab_ed25519.pub') }}"
+admin_password_hash: "{{ vault_admin_password_hash }}"
+ssh_allowed_group: ssh-users
+
+# ---- Kubernetes (k3s) -------------------------------------------------------
+k3s_version: v1.36.4+k3s1
+k3s_token: "{{ vault_k3s_token }}"          # shared secret nodes use to join
+k3s_server_ip: "{{ hostvars[groups['k3s_servers'][0]]['ansible_host'] }}"
+k3s_cluster_cidr: 10.42.0.0/16             # pod IPs
+k3s_service_cidr: 10.43.0.0/16             # ClusterIP Service IPs
+k3s_flannel_iface: eth0
+k3s_kubelet_args: []
+k3s_extra_config: {}                      # any other k3s config.yaml keys, if an environment needs them
+
+# ---- Shared storage for uploaded files (NFS, ReadWriteMany) ---------------
+nfs_export_path: /srv/nfs/epiconnect-media
+nfs_export_uid: 10001                      # the EPIConnect container's user (Dockerfile: USER 10001)
+nfs_export_gid: 10001
+
+# ---- Where the cluster credentials land on the control machine -------------
+kubeconfig_local_path: ~/.kube/epiconnect-lab.yaml

@@ -48,3 +48,41 @@ Format: **Decision** / Why / Rejected alternatives / Failure mode it addresses /
 - **Why:** key-based authentication cannot be brute-forced like a password. The console password guarantees a way in if SSH or networking is broken, the same role as an out-of-band management port in a datacentre.
 - **Failure mode addressed:** being locked out of a VM with broken networking; credential exposure in Git.
 - **Trade-off:** the `ansible` account has passwordless sudo, as automation accounts usually do. It is reachable only with the lab key; that is the least-privilege boundary.
+
+## D6. Own Ansible roles for k3s, not the `curl | sh` installer or k3s-ansible
+
+- **Decision:** roles `k3s_install` (pinned binary verified against the release checksum file, systemd unit), `k3s_server`, `k3s_agent` (config file, start, verify Ready).
+- **Why:** each step is visible and explainable; the configuration is a reviewed file (`/etc/rancher/k3s/config.yaml`), not flags inside a script; upgrades are a one-line version change.
+- **Rejected:** `curl -sfL https://get.k3s.io | sh -` (runs an unpinned remote script as root, not idempotent); the community `k3s-ansible` playbook (fine in production, but hides exactly what this project is meant to show I understand).
+- **Failure mode addressed:** unverified binaries, unreviewable configuration, "it worked when I ran the script" drift.
+
+## D7. Secrets in Ansible Vault; vault password outside the repository
+
+- **Decision:** join token and admin password hash in an encrypted, committed `vault.yml`; the random vault password in `~/.config/epiconnect-k8s/vault-pass`.
+- **Rejected:** HashiCorp Vault (a whole service to run for two values; out of scope by design); plaintext in group_vars; environment variables typed by hand.
+- **Failure mode addressed:** credentials leaked through Git.
+
+## D8. Two accounts: automation vs human
+
+- **Decision:** `ansible` (key, passwordless sudo) and `rayen` (key, sudo with password); SSH limited to the `ssh-users` group.
+- **Failure mode addressed:** a stolen human key giving root directly; shared accounts with no attribution.
+
+## D9. Host firewall on every node, rules scoped to the lab subnet
+
+- **Decision:** UFW default-deny inbound; only the ports Kubernetes needs, only from `192.168.50.0/24`; pod/service ranges allowed so cluster traffic works.
+- **Failure mode addressed:** kubelet/API/NFS reachable from anywhere that can route to a node.
+- **Note:** the host firewall protects *nodes*. Traffic *between pods* is controlled by Kubernetes NetworkPolicy (Milestone 3): a different layer, and both are needed.
+
+## D10. One control-plane node with SQLite (not HA)
+
+- **Decision:** a single `k3s server` with its default embedded SQLite datastore.
+- **Why:** three VMs on a laptop; the goal is to demonstrate scheduling, rescheduling and storage across nodes, which one server plus two workers already shows.
+- **Rejected:** three servers with embedded etcd (HA control plane; it would leave no dedicated workers and triple the control-plane memory).
+- **Failure mode accepted and documented:** losing `k3s-server` stops scheduling and the API (running pods keep serving). Production answer: 3 (odd number, for etcd quorum) control-plane nodes.
+
+## D11. NFS for uploaded files (RWX); local disk for PostgreSQL (RWO)
+
+- **Decision:** `k3s-server` exports one NFS share for uploads; PostgreSQL uses a local-path volume on the same node.
+- **Why:** the 3 app replicas run on 2 workers and must see the same uploaded files; a node-local volume cannot be mounted on two nodes. Databases need local-disk semantics (fsync, locking) that NFS does not guarantee.
+- **Rejected:** Longhorn/Ceph (distributed block storage: correct in production, far too heavy for a 3-VM lab); MinIO/S3-style object storage (would require changing the application's storage configuration and adds a service to operate).
+- **Failure mode accepted and documented:** `k3s-server` is a single point of failure for both shares.

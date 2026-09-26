@@ -1,0 +1,18 @@
+---
+common_packages:
+  - curl
+  - ca-certificates
+  - jq
+  - bash-completion
+common_timezone: UTC
+# Kernel modules Kubernetes networking relies on:
+#   overlay       -> containerd's overlayfs snapshotter (container image layers)
+#   br_netfilter  -> bridged pod traffic passes through iptables (Services, NetworkPolicy)
+common_kernel_modules:
+  - overlay
+  - br_netfilter
+common_load_kernel_modules: true
+common_sysctl:
+  net.ipv4.ip_forward: 1                   # nodes route pod traffic
+  net.bridge.bridge-nf-call-iptables: 1
+  net.bridge.bridge-nf-call-ip6tables: 1

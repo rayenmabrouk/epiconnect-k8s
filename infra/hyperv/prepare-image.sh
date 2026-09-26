@@ -83,6 +83,7 @@ while read -r name ip mac; do
   # Hyper-V notation 00155D320A0A -> netplan notation 00:15:5d:32:0a:0a
   NODE_MAC="$(echo "${mac}" | tr 'A-F' 'a-f' | sed 's/../&:/g; s/:$//')"
   export NODE_NAME NODE_IP NODE_MAC
+  # shellcheck disable=SC2016  # literal ${...}: envsubst's list of variables to replace
   vars='${NODE_NAME} ${NODE_IP} ${NODE_MAC} ${SSH_PUBLIC_KEY} ${CONSOLE_PASSWORD_HASH} ${GATEWAY} ${PREFIX_LENGTH} ${DNS_SERVERS} ${SEED_VERSION}'
   envsubst "${vars}" < "${TPL_DIR}/user-data.yaml.tpl"      > "${work}/user-data"
   envsubst "${vars}" < "${TPL_DIR}/network-config.yaml.tpl" > "${work}/network-config"

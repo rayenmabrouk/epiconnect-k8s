@@ -1,0 +1,60 @@
+---
+- name: Install ufw
+  ansible.builtin.apt:
+    name: ufw
+    state: present
+
+- name: Rules for this node's role
+  ansible.builtin.set_fact:
+    firewall_rules: >-
+      {{ firewall_rules_all_nodes
+         + (firewall_rules_server if inventory_hostname in groups['k3s_servers'] else [])
+         + (firewall_rules_nfs_server if inventory_hostname in groups['nfs_servers'] else []) }}
+
+- name: Allow required ports from the lab network only
+  community.general.ufw:
+    rule: allow
+    port: "{{ item.port }}"
+    proto: "{{ item.proto }}"
+    from_ip: "{{ lab_subnet }}"
+    comment: "{{ item.comment }}"
+  loop: "{{ firewall_rules }}"
+  loop_control:
+    label: "{{ item.port }}/{{ item.proto }} {{ item.comment }}"
+
+# Pods and Services have their own address ranges. Traffic from them reaches
+# the node itself (INPUT) and is forwarded between pods/nodes (FORWARD, "route"
+# rules in ufw). Without these, DNS lookups from pods and cross-node traffic fail.
+- name: Allow traffic from pod and service networks to the node
+  community.general.ufw:
+    rule: allow
+    from_ip: "{{ item }}"
+    comment: "k3s {{ 'pods' if item == k3s_cluster_cidr else 'services' }}"
+  loop: ["{{ k3s_cluster_cidr }}", "{{ k3s_service_cidr }}"]
+
+- name: Allow forwarded traffic from/to the pod network
+  community.general.ufw:
+    rule: allow
+    route: true
+    from_ip: "{{ item.from }}"
+    to_ip: "{{ item.to }}"
+    comment: "k3s pod routing"
+  loop:
+    - {from: "{{ k3s_cluster_cidr }}", to: any}
+    - {from: any, to: "{{ k3s_cluster_cidr }}"}
+
+- name: Default policies (incoming denied, outgoing allowed)
+  community.general.ufw:
+    direction: "{{ item.direction }}"
+    default: "{{ item.policy }}"
+  loop:
+    - {direction: incoming, policy: deny}
+    - {direction: outgoing, policy: allow}
+  loop_control:
+    label: "{{ item.direction }}={{ item.policy }}"
+
+# Enabled last: the SSH rule already exists, so Ansible cannot lock itself out.
+- name: Enable the firewall
+  community.general.ufw:
+    state: enabled
+    logging: "low"

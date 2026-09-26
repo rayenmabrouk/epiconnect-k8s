@@ -1,0 +1,65 @@
+---
+# Two kinds of accounts, each with the least access it needs:
+#   automation_user  Ansible. Key only, passwordless sudo (it runs unattended).
+#   admin_user       a human. Key only for SSH; sudo asks for a password, so a
+#                    stolen key alone does not give root.
+# Only members of ssh_allowed_group may log in over SSH (enforced by ssh_hardening).
+
+- name: Group allowed to log in over SSH
+  ansible.builtin.group:
+    name: "{{ ssh_allowed_group }}"
+    system: true
+
+- name: Automation account is in the SSH group
+  ansible.builtin.user:
+    name: "{{ automation_user }}"
+    groups: "{{ ssh_allowed_group }}"
+    append: true
+
+- name: Automation account accepts only the lab key
+  ansible.posix.authorized_key:
+    user: "{{ automation_user }}"
+    key: "{{ automation_ssh_public_key }}"
+    exclusive: true
+
+- name: Automation account sudo rule (managed here, not by cloud-init)
+  ansible.builtin.copy:
+    dest: /etc/sudoers.d/10-automation
+    content: |
+      # Managed by Ansible (role: users)
+      {{ automation_user }} ALL=(ALL) NOPASSWD:ALL
+    owner: root
+    group: root
+    mode: "0440"
+    validate: /usr/sbin/visudo -cf %s
+
+- name: Remove cloud-init's sudo rule (replaced by the file above)
+  ansible.builtin.file:
+    path: /etc/sudoers.d/90-cloud-init-users
+    state: absent
+
+- name: Human admin account
+  ansible.builtin.user:
+    name: "{{ admin_user }}"
+    shell: /bin/bash
+    groups: [sudo, "{{ ssh_allowed_group }}"]
+    append: true
+    password: "{{ admin_password_hash }}"
+    update_password: always
+
+- name: Human admin SSH key
+  ansible.posix.authorized_key:
+    user: "{{ admin_user }}"
+    key: "{{ admin_ssh_public_key }}"
+    exclusive: true
+
+- name: Root cannot log in with a password
+  ansible.builtin.user:
+    name: root
+    password_lock: true
+
+- name: No stock "ubuntu" account
+  ansible.builtin.user:
+    name: ubuntu
+    state: absent
+    remove: true

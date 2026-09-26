@@ -61,3 +61,40 @@ Unexpected otherwise: stop and find out why the key changed.
 `ssh -v k3s-server` shows which key is offered. It must be `~/.ssh/k3s_lab_ed25519`.
 If the right key is rejected, cloud-init did not apply user-data: check it from the
 console (see above).
+
+## Ansible
+
+### `UNREACHABLE! ... Permission denied (publickey)`
+The inventory uses user `ansible` and key `~/.ssh/k3s_lab_ed25519`. Test the same thing
+by hand: `ssh -i ~/.ssh/k3s_lab_ed25519 ansible@192.168.50.10`. If that works, run the
+playbook with `-vvv` to see the exact SSH command.
+
+### `Attempting to decrypt but no vault secrets found`
+`~/.config/epiconnect-k8s/vault-pass` is missing. Restore it from your backup. If it is
+lost, delete `ansible/inventory/group_vars/all/vault.yml` and run `make vault-init`, then
+`make provision` (the agents restart with the new token).
+
+### A task reports `changed` on every run
+It is not idempotent. Find it in the second run:
+`grep -B2 '^changed:' evidence/05-ansible-idempotency/run-2.log`.
+
+### Locked out of SSH after a hardening change
+Log in on the Hyper-V console as `ansible` with the break-glass password
+(`~/.config/epiconnect-k8s/console-password` in WSL), then `sudo sshd -t` and
+`sudo journalctl -u ssh -n 50`. Or roll back everything: `make restore`.
+
+## k3s
+
+### A worker never becomes Ready / "Wait for this node to join" times out
+On the worker: `sudo journalctl -u k3s-agent -n 100 --no-pager`
+- `401 Unauthorized` / token errors: the agent's token differs from the server's. Re-run `make provision`.
+- `connection refused` / timeouts to `192.168.50.10:6443`: from the worker, `nc -zv 192.168.50.10 6443`; check `sudo ufw status` on the server.
+- Node registered but `NotReady`: `kubectl describe node k3s-worker1` → Conditions. Usually flannel: `8472/udp` must be open between nodes.
+
+### `kubectl` from WSL: "Unable to connect to the server"
+`echo $KUBECONFIG` must print `/home/<you>/.kube/epiconnect-lab.yaml` (open a new shell
+after `make bootstrap`). The file is written by the last play of `make provision`.
+
+### Pods cannot resolve DNS or reach pods on another node
+`kubectl -n kube-system logs deploy/coredns`; on the nodes, `sudo journalctl -k | grep 'UFW BLOCK'`
+shows dropped packets. The firewall role must allow 10.42.0.0/16 and 10.43.0.0/16 (input and route).

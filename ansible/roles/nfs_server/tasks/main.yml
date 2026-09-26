@@ -1,0 +1,43 @@
+---
+# One NFS export for EPIConnect's uploaded files. Pods on ANY node mount it
+# read-write at the same time (Kubernetes access mode ReadWriteMany), which a
+# node-local disk cannot offer.
+- name: Install the NFS server
+  ansible.builtin.apt:
+    name: nfs-kernel-server
+    state: present
+
+- name: Export directory owned by the application user
+  ansible.builtin.file:
+    path: "{{ nfs_export_path }}"
+    state: directory
+    owner: "{{ nfs_export_uid }}"
+    group: "{{ nfs_export_gid }}"
+    mode: "0770"
+
+- name: Drop-in directory for exports (not created by the package)
+  ansible.builtin.file:
+    path: /etc/exports.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# all_squash + anonuid/anongid: whatever user a client writes as, files on the
+# share belong to the app user. The share has exactly one tenant: EPIConnect.
+- name: Export the directory to the lab network only
+  ansible.builtin.copy:
+    dest: /etc/exports.d/epiconnect.exports
+    content: |
+      # Managed by Ansible (role: nfs_server)
+      {{ nfs_export_path }} {{ lab_subnet }}(rw,sync,no_subtree_check,all_squash,anonuid={{ nfs_export_uid }},anongid={{ nfs_export_gid }})
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Re-export NFS shares
+
+- name: NFS server running and enabled at boot
+  ansible.builtin.systemd_service:
+    name: nfs-server
+    state: started
+    enabled: true

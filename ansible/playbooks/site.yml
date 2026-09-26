@@ -1,0 +1,11 @@
+---
+# Whole lab, in dependency order. Safe to run any number of times: a second
+# run on an unchanged lab must report changed=0 (demos/05-ansible-idempotency.sh).
+#   make provision                       everything
+#   make provision TAGS=k3s              one layer (base | storage | k3s | kubeconfig)
+- name: Base OS
+  import_playbook: base.yml
+- name: Storage
+  import_playbook: storage.yml
+- name: Kubernetes
+  import_playbook: k3s.yml

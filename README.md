@@ -14,9 +14,9 @@ Linux hosts, configuration management, container orchestration, cluster networki
 
 | Milestone | Content | State |
 |---|---|---|
-| 0 | WSL2 control machine (pinned Ansible, kubectl, helm) | in progress |
-| 1 | Hyper-V network + 3 Ubuntu VMs (cloud image, cloud-init, static IPs) | in progress |
-| 2 | Ansible roles: users, SSH hardening, UFW, NFS, k3s server/agents | next |
+| 0 | WSL2 control machine (pinned Ansible, kubectl, helm) | done |
+| 1 | Hyper-V network + 3 Ubuntu VMs (cloud image, cloud-init, static IPs) | done |
+| 2 | Ansible roles: users, SSH hardening, UFW, NFS, k3s server/agents | in progress |
 | 3 | Raw Kubernetes manifests | |
 | 4 | Application verification | |
 | 5 | Helm chart | |
@@ -65,10 +65,20 @@ Prerequisites: Windows 11 Pro with Hyper-V enabled, ~12 GB free RAM, ~100 GB dis
    make checkpoint   # "fresh" checkpoint: roll back here any time with make restore
    ```
 
+## Configure the nodes and build the cluster (Milestone 2)
+
+```bash
+make vault-init     # once: encrypted vault with the k3s join token + your admin password hash
+make provision      # base OS, users, SSH hardening, firewall, NFS, k3s server + agents
+make nodes          # 3 nodes Ready
+demos/05-ansible-idempotency.sh --fresh   # evidence: rebuild from clean VMs, 2nd run changed=0
+```
+
 `make help` lists every operation.
 
 ## Documentation
 
 - [Decision log](docs/DECISIONS.md): every component, why it exists, what failure it addresses
 - [Study notes: lab infrastructure](docs/learning/01-lab-infrastructure.md)
+- [Study notes: Ansible and k3s](docs/learning/02-ansible-and-k3s.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)

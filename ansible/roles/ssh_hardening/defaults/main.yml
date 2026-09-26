@@ -1,0 +1,4 @@
+---
+ssh_hardening_max_auth_tries: 3
+ssh_hardening_login_grace_time: 30
+ssh_hardening_client_alive_interval: 300

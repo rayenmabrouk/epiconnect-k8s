@@ -24,11 +24,11 @@ if ! grep -qi microsoft /proc/version; then
 fi
 
 log "APT packages"
-sudo apt-get update -qq
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+sudo apt-get update
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
   python3-venv python3-pip git make jq curl openssl gettext-base \
   qemu-utils cloud-image-utils ubuntu-cloudimage-keyring gpgv \
-  netcat-openbsd dnsutils shellcheck >/dev/null
+  netcat-openbsd dnsutils shellcheck
 
 log "Ansible toolchain in ${VENV}"
 [[ -d "${VENV}" ]] || python3 -m venv "${VENV}"
@@ -81,11 +81,13 @@ if ! grep -q "# BEGIN k3s-lab" "${HOME}/.ssh/config" 2>/dev/null; then
   chmod 600 "${HOME}/.ssh/config"
 fi
 
-if ! grep -q "epiconnect-k8s toolchain" "${HOME}/.bashrc"; then
+if ! grep -q "epiconnect-lab.yaml" "${HOME}/.bashrc"; then
+  sed -i '/# epiconnect-k8s toolchain/,+1d' "${HOME}/.bashrc"   # older version of this block
   cat >> "${HOME}/.bashrc" <<RC
 
 # epiconnect-k8s toolchain
 export PATH="${BIN}:${VENV}/bin:\${PATH}"
+export KUBECONFIG="\${HOME}/.kube/epiconnect-lab.yaml"
 RC
 fi
 export PATH="${BIN}:${VENV}/bin:${PATH}"
