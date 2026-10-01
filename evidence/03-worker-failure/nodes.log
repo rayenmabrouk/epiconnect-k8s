@@ -1,0 +1,2 @@
+15:07:53.643 k3s-server=Ready  k3s-worker1=Ready  k3s-worker2=Ready  
+15:08:43.579 k3s-server=Ready  k3s-worker1=Ready  k3s-worker2=NotReady  
