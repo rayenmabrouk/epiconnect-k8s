@@ -23,8 +23,98 @@ Linux hosts, configuration management, container orchestration, cluster networki
 | 4 | Application verification | done ([12/12 checks](evidence/04-app-verification/report.md)) |
 | 5 | Helm chart | done ([12/12 checks under Helm](evidence/04-app-verification/report.md)) |
 | 6 | GitHub Actions CI + GHCR | done ([runs](https://github.com/rayenmabrouk/epiconnect-k8s/actions/workflows/ci.yml)) |
-| 7 | Failure demonstrations with evidence | |
-| 8 | Final documentation | |
+| 7 | Failure demonstrations with evidence | done ([results](#failure-demonstrations)) |
+| 8 | Final documentation | done |
+
+## What was built
+
+- **Three Ubuntu 24.04 VMs on Hyper-V** (1 control-plane, 2 workers) on an isolated network with fixed IPs, created from scripts and cloud-init.
+- **Ansible** (9 roles, Vault for secrets) that turns blank VMs into a hardened k3s cluster, and a proof that running it twice changes nothing.
+- **EPIConnect on Kubernetes**: 3 web replicas, PostgreSQL as a StatefulSet, uploads on NFS shared by all replicas, TLS, default-deny NetworkPolicy, Pod Security *restricted*, probes, migrations as Jobs.
+- **A Helm chart** that adopted the running raw-manifest deployment in place, without downtime.
+- **GitHub Actions CI** that lints, validates, scans, smoke-tests on k3d and publishes an immutable image to GHCR. It does not deploy (see below).
+- **Five failure demonstrations**, each with its raw evidence committed.
+
+## Architecture
+
+```
+                         https://epiconnect.lab (lab CA, TLS terminated at Traefik)
+                                         │
+                      ┌──────────────────▼───────────────────┐
+                      │ Traefik (Ingress) + ServiceLB (k3s)  │
+                      └──────────────────┬───────────────────┘
+                                         │ Service "epiconnect" (only Ready pods)
+          ┌──────────────────────────────┼──────────────────────────────┐
+          │ k3s-worker1  (pool=app)      │             k3s-worker2  (pool=app)
+          │  web pod ─┐                  │                  web pod ─┐
+          │  web pod ─┤  Deployment, 3 replicas, maxSurge 1 / maxUnavailable 0
+          │           │                  │                           │
+          └───────────┼──────────────────┴───────────────────────────┼──────┘
+                      │ uploads (NFS, ReadWriteMany)                 │
+                      ▼                                              ▼
+          ┌───────────────────────────────────────────────────────────────┐
+          │ k3s-server (pool=data, control plane)                         │
+          │  NFS export (uploads)          PostgreSQL StatefulSet (RWO,   │
+          │                                local-path volume), 1 replica  │
+          │  API server + SQLite datastore, scheduler, controllers        │
+          └───────────────────────────────────────────────────────────────┘
+   NetworkPolicy: deny all; allow DNS; Traefik -> web; labelled web/Job pods -> PostgreSQL only.
+   Image: CI -> ghcr.io/rayenmabrouk/epiconnect:<EPIConnect commit>; deploy: make deploy-helm.
+```
+
+## Why this design
+
+| Choice | Reason (details and rejected alternatives in the [decision log](docs/DECISIONS.md)) |
+|---|---|
+| k3s, 1 server + 2 workers | Real multi-node scheduling and failure behaviour on a laptop; a single control plane is a documented, accepted single point of failure (D10) |
+| Ansible for the nodes | Reviewable, re-runnable configuration; idempotency is demonstrable (D3, D6) |
+| NFS for uploads, local disk for PostgreSQL | Replicas on different nodes must share files (RWX); a database needs real local-disk semantics (D11) |
+| Raw manifests, then Helm | Each object understood before being templated; Helm removes the concrete duplication seen in the manifests (D18, D19) |
+| Liveness without the database, readiness with it | A database outage removes pods from rotation instead of restarting all of them (D15) |
+| CI stops at the registry | The cluster is private; giving GitHub a path into it would make GitHub part of its attack surface (D23) |
+
+## Failure demonstrations
+
+All demos run against the live lab with a client sending one HTTPS request every 0.2 s through Traefik. Scripts in [`demos/`](demos), raw logs in [`evidence/`](evidence). Numbers below are copied from the committed summaries.
+
+| # | Demonstration | Result | Evidence |
+|---|---|---|---|
+| 1 | **Rolling update** A to B (`0b3cd06` to `b38f31a`) via `helm upgrade` | 227 requests, 227 HTTP 200, 0 failed; upgrade incl. migration Job 27 s. Two passing runs; one earlier run was a false FAIL in my script (it stopped measuring before old pods finished terminating), fixed | [summary](evidence/01-rolling-update/summary.md) |
+| 2A | **Failed readiness**: PostgreSQL stopped for 30 s | All 3 web pods left the Service (0 Ready) and Traefik answered 503 at once; web container restarts 3 before and 3 after (liveness does not depend on the database); pods rejoined about 40 s after PostgreSQL returned, with no manual action. Honest cost: 43 HTTP 500 in the ~8 s before readiness failed (5 s probe period, 2 failures) | [summary](evidence/02-readiness-and-rollback/summary.md) |
+| 2B | **Bad release** (`DB_HOST` typo), then `helm rollback` | New pod stuck in its init container, the 3 old pods kept serving (maxUnavailable 0); upgrade failed after its 2 min timeout; rollback restored the previous configuration. 579 requests, 0 failed | same |
+| 3 | **Worker failure**: `k3s-worker2` (2 of 3 web pods) powered off hard | Node NotReady after 46 s; 3 Ready web pods on the surviving worker 81 s after the power cut, no intervention. 14 requests got no answer (3 s timeouts) while the dead pods were still in the Service; my client is sequential, so that window (about 44 s) was mostly degraded, not 14 isolated errors. Pods did not move back after the node returned | [summary](evidence/03-worker-failure/summary.md) |
+| 4 | **Database persistence**: `postgres-0` deleted | New pod (new UID) claimed the same volume; the row written before was read back. Ready after 8 s. Web requests failed during the restart (single database instance) | [summary](evidence/04-database-persistence/summary.md) |
+| 5 | **Ansible idempotency** from fresh VMs | Run 1: 32/26/26 changes (254 s); run 2: **0 changes** on all nodes (53 s) | [summary](evidence/05-ansible-idempotency/summary.md) |
+
+Re-run: `demos/0N-*.sh` (each needs the lab up and `make verify` green).
+
+## Limitations (stated, not hidden)
+
+- **One control-plane node with SQLite.** If `k3s-server` is lost, the API and scheduling stop; running pods keep serving. It also hosts the database volume and the NFS export. Production: 3 control-plane nodes, replicated storage.
+- **One PostgreSQL instance.** Demos 2 and 4 show the cost: requests fail while it restarts. High availability needs a replicated database (operator or managed service).
+- **Volume reclaim policy is `Delete`** (local-path default): deleting the PVC deletes the data; deleting the pod does not.
+- **Failover is not instant**: about 46 s to declare a node dead plus the 30 s toleration and the pod start. These are tunable, with the usual trade-off against false positives.
+- **No deployment from CI**, no GitOps agent, no monitoring stack (Prometheus/Grafana were an optional extra and are not built).
+- **k3s gap:** a new pod's own egress policy is not enforced for its first moments ([k3s #14711](https://github.com/k3s-io/k3s/issues/14711)); the database is protected by its ingress policy regardless.
+
+## Kubernetes compared with the AWS deployment
+
+The AWS version of the same application (ECS Fargate, RDS, ALB) is in the EPIConnect repository. This is a conceptual mapping, not a cost or performance claim: the two were not benchmarked against each other.
+
+| Concern | AWS (EPIConnect repo) | This repository |
+|---|---|---|
+| Run containers | ECS service on Fargate (no nodes to manage) | Deployment on k3s nodes I install, patch and replace myself |
+| Desired state / self-healing | ECS service scheduler | Deployment/ReplicaSet controllers (demo 3) |
+| Load balancer + health | ALB, target-group health checks | Traefik Ingress, Service endpoints driven by readiness probes (demo 2) |
+| Rolling deploy / rollback | ECS rolling deployment, circuit breaker | RollingUpdate with maxSurge/maxUnavailable, `helm rollback` (demos 1, 2B) |
+| Database | RDS: backups, Multi-AZ, patching included | PostgreSQL StatefulSet: I own backups, failover and upgrades (demo 4 covers only pod loss) |
+| Shared files | EFS or S3 | NFS export mounted ReadWriteMany |
+| Network isolation | Security groups | NetworkPolicy (pod level) plus UFW (node level) |
+| Secrets | Secrets Manager | Kubernetes Secret (base64, not encrypted at rest by default here), Ansible Vault for node secrets |
+| Images | ECR | GHCR |
+| Infrastructure as code | Terraform/CloudFormation | Ansible (hosts), Helm (workloads) |
+
+What Kubernetes buys: portability, one API for every workload, scheduling control, no per-service fees. What it costs: the control plane and node lifecycle become my job, and every managed feature in the left column (database HA, backups, certificate renewal, node auto-replacement) must be built or accepted as missing.
 
 ## Lab topology
 
@@ -138,9 +228,4 @@ make smoke          # the CI smoke test on a local k3d cluster (needs Docker + k
 ## Documentation
 
 - [Decision log](docs/DECISIONS.md): every component, why it exists, what failure it addresses
-- [Study notes: lab infrastructure](docs/learning/01-lab-infrastructure.md)
-- [Study notes: Ansible and k3s](docs/learning/02-ansible-and-k3s.md)
-- [Study notes: Kubernetes manifests and verification](docs/learning/03-kubernetes-manifests.md)
-- [Study notes: Helm](docs/learning/04-helm.md)
-- [Study notes: CI](docs/learning/05-ci.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
