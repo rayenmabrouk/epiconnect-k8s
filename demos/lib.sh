@@ -58,8 +58,23 @@ count_codes() {  # count_codes <log> [from HH:MM:SS.mmm] [to HH:MM:SS.mmm]
     END {for (k in c) printf "%s x%d  ", k, c[k]}' "$1"
 }
 
-web_ready() {  # number of Ready web pods
-  kubectl -n ${ns} get deploy epiconnect -o jsonpath='{.status.readyReplicas}' | sed 's/^$/0/'
+web_ready() {  # number of Ready web pods (the field is absent, not 0, when none is Ready)
+  local n
+  n="$(kubectl -n ${ns} get deploy epiconnect -o jsonpath='{.status.readyReplicas}' 2>/dev/null || true)"
+  echo "${n:-0}"
+}
+
+# Wait until a pod exists AND is Ready. `kubectl wait` fails at once with
+# NotFound if the pod has not been created yet, which is exactly the situation
+# right after scaling a StatefulSet up.
+wait_pod_ready() {  # wait_pod_ready <pod> [timeout seconds]
+  local i
+  for ((i = 0; i < ${2:-180} / 2; i++)); do
+    [[ "$(kubectl -n ${ns} get pod "$1" -o jsonpath='{.status.containerStatuses[0].ready}' 2>/dev/null || true)" == true ]] && return 0
+    sleep 2
+  done
+  echo "$1 not Ready after ${2:-180} s" >&2
+  return 1
 }
 
 web_restarts() {

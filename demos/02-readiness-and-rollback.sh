@@ -44,7 +44,7 @@ echo "web pods Ready during the outage: ${a_ready_during}; holding the outage 30
 sleep 30
 a_start="$(ts)"
 kubectl -n ${ns} scale statefulset postgres --replicas=1
-kubectl -n ${ns} wait --for=condition=Ready pod/postgres-0 --timeout=180s
+wait_pod_ready postgres-0 180
 for _ in $(seq 1 60); do [[ "$(web_ready)" == 3 ]] && break; sleep 2; done
 a_back="$(ts)"
 sleep 5
