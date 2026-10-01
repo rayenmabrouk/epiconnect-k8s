@@ -1,0 +1,4 @@
+15:13:56.483 web 3/3 ready, restarts 0, on k3s-worker1:3 | postgres-0 ready
+15:14:04.911 web 3/3 ready, restarts 0, on k3s-worker1:3 | postgres-0 not ready/absent
+15:14:11.422 web 0/3 ready, restarts 0, on k3s-worker1:3 | postgres-0 ready
+15:14:15.975 web 3/3 ready, restarts 0, on k3s-worker1:3 | postgres-0 ready
