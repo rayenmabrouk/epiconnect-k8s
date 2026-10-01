@@ -44,7 +44,7 @@ marker="written $(date -u '+%Y-%m-%dT%H:%M:%SZ') nonce $(openssl rand -hex 6)"
 echo "==> Writing: ${marker}"
 psql "CREATE TABLE IF NOT EXISTS k8s_persistence_demo (id serial PRIMARY KEY, note text NOT NULL)" >/dev/null
 psql "INSERT INTO k8s_persistence_demo (note) VALUES ('${marker}')" >/dev/null
-users_before="$(psql 'SELECT count(*) FROM auth_user' 2>/dev/null || echo n/a)"
+users_before="$(psql 'SELECT count(*) FROM users_user' 2>/dev/null || echo n/a)"
 pod_before="$(pod_facts)"; vol_before="$(volume_facts)"
 
 start_client "${out}/requests.log"
@@ -67,7 +67,7 @@ sleep 5
 stop_background
 
 read_back="$(psql "SELECT note FROM k8s_persistence_demo WHERE note = '${marker}'")"
-users_after="$(psql 'SELECT count(*) FROM auth_user' 2>/dev/null || echo n/a)"
+users_after="$(psql 'SELECT count(*) FROM users_user' 2>/dev/null || echo n/a)"
 pod_after="$(pod_facts)"; vol_after="$(volume_facts)"
 psql "DROP TABLE k8s_persistence_demo" >/dev/null     # leave the application database as it was
 ok_end=$(tail -10 "${out}/requests.log" | awk '$2 == "200"' | wc -l)
@@ -81,7 +81,7 @@ pass=false
   echo "- Date (UTC): $(date -u '+%Y-%m-%d %H:%M')"
   echo "- Row written before: \`${marker}\`"
   echo "- Row read back from the new pod: \`${read_back:-<missing>}\`"
-  echo "- Application users (auth_user): ${users_before} before, ${users_after} after"
+  echo "- Application users (users_user table): ${users_before} before, ${users_after} after"
   echo
   echo "| | Before | After |"
   echo "|---|---|---|"
