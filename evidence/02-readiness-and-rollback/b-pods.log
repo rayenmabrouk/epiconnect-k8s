@@ -1,0 +1,3 @@
+14:44:41.044 web 3/3 ready, restarts 3, on k3s-worker1:2 k3s-worker2:1 | postgres-0 ready
+14:44:50.147 web 3/4 ready, restarts 3, on k3s-worker1:2 k3s-worker2:2 | postgres-0 ready
+14:47:01.862 web 3/4 ready, restarts 3, on k3s-worker1:2 k3s-worker2:1 | postgres-0 ready

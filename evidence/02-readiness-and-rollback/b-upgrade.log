@@ -1,0 +1,6 @@
+namespace/epiconnect unchanged
+level=WARN msg="upgrade failed" name=epiconnect error="resource Deployment/epiconnect/epiconnect not ready. status: InProgress, message: Updated: 1/3\nresource Job/epiconnect/epiconnect-migrate-6 not ready. status: InProgress, message: Job in progress\nresource Job/epiconnect/epiconnect-bootstrap-admin-6 not ready. status: InProgress, message: Job in progress\ncontext deadline exceeded"
+Error: UPGRADE FAILED: resource Deployment/epiconnect/epiconnect not ready. status: InProgress, message: Updated: 1/3
+resource Job/epiconnect/epiconnect-migrate-6 not ready. status: InProgress, message: Job in progress
+resource Job/epiconnect/epiconnect-bootstrap-admin-6 not ready. status: InProgress, message: Job in progress
+context deadline exceeded
