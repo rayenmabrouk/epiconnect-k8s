@@ -49,7 +49,9 @@ start_observer() {  # start_observer <log file>
 
 stop_background() {
   kill "${client_pid:-}" "${observer_pid:-}" 2>/dev/null || true
-  wait 2>/dev/null || true
+  # wait for these two only: a bare `wait` would also wait for any other
+  # background loop of the calling demo and never return
+  wait "${client_pid:-}" "${observer_pid:-}" 2>/dev/null || true
 }
 
 # "200 x120  503 x14" for a request log, optionally between two times
